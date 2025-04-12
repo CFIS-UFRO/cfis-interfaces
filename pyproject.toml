@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cfis_interfaces"
+version= "v2025.04.12.01"
+authors = [
+  { name="Bryan Casanelli", email="bryancasanelli@gmail.com" },
+]
+description = "Interfaces used by our lab to control peripherals such as detectors or 3D printers."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file="LICENSE" }
+dependencies = [
+"git+https://github.com/CFIS-UFRO/cfis-utils.git",
+]
+
+[project.urls]
+Repository = "https://github.com/CFIS-UFRO/cfis-interfaces"
+
+[tool.setuptools.packages.find]
+where = ["src"]
