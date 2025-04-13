@@ -9,13 +9,17 @@ You can install the library using pip:
 pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git
 ```
 
-Also you can specify a specific version to install:
+Additionally, you can specify a particular version to install:
 ```bash
 pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git@<version>
 ```
 where `<version>` is one of the [available tags](https://github.com/CFIS-UFRO/cfis-interfaces/tags).
 
 **Latest stable tag**: v2025.04.13.01
+
+# Interfaces
+
+Each interface has its own README file with instructions on how to use it inside the `src/cfis_interfaces/` folder.
 
 # For developers
 
@@ -37,3 +41,4 @@ where `<version>` is one of the [available tags](https://github.com/CFIS-UFRO/cf
     ```bash
     python -m src.cfis_interfaces.<file without .py>
     ```
+- Not only the tags but also the main branch should be stable. If you are planning to make big and possibly breaking changes, please create a new branch and merge it to the main branch when you are done.
