@@ -1,1 +1,2 @@
 git+https://github.com/CFIS-UFRO/cfis-utils.git
+pyserial
