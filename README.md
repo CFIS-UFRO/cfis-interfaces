@@ -1,5 +1,6 @@
-# cfis-interfaces
-Interfaces used by our lab to control peripherals such as detectors or 3D printers.
+# CFIS Interfaces
+
+Interfaces used by the CFIS laboratory to control peripherals such as detectors or 3D printers.
 
 # How to install
 

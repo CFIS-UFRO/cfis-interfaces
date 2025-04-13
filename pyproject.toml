@@ -8,7 +8,7 @@ version= "v2025.04.13.01"
 authors = [
   { name="Bryan Casanelli", email="bryancasanelli@gmail.com" },
 ]
-description = "Interfaces used by our lab to control peripherals such as detectors or 3D printers."
+description = "Interfaces used by the CFIS laboratory to control peripherals such as detectors or 3D printers."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file="LICENSE" }
