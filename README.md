@@ -14,7 +14,7 @@ pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git@<version>
 ```
 where `<version>` is one of the [available tags](https://github.com/CFIS-UFRO/cfis-interfaces/tags).
 
-**Latest stable tag**: v2025.04.12.02
+**Latest stable tag**: v2025.04.13.01
 
 # For developers
 
