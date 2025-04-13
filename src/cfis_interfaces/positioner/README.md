@@ -2,7 +2,11 @@
 
 This library allows controlling a positioner via g-code commands.
 
-It is designed for controllers that may not provide reliable command acknowledgments. To accommodate this, the library utilizes a user-configurable timeout to allow sufficient time for command execution.
+It is designed for controllers that may not provide reliable command acknowledgments (common for old controllers). To accommodate this, the library utilizes a user-configurable timeout to allow sufficient time for command execution.
+
+## G-Code Commands
+
+For detailed documentation on G-code commands, please refer to: [https://reprap.org/wiki/G-code](https://reprap.org/wiki/G-code)
 
 # Getting Started
 
