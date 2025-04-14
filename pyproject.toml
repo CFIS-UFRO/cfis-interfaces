@@ -13,7 +13,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { file="LICENSE" }
 dependencies = [
-"git+https://github.com/CFIS-UFRO/cfis-utils.git",
+"cfis-utils @ git+https://github.com/CFIS-UFRO/cfis-utils.git",
 "pyserial",
 "pyusb",
 ]
