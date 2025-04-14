@@ -39,6 +39,8 @@ It is implemented based on the official specifications found in the Amptek [Digi
     print(f"Connected to {DEVICE_TYPE}.")
 
     # --- Apply a default configuration ---
+    # You can get a list of available default configurations using:
+    # amptek.get_available_default_configurations()
     # HVSE is applied ramped until the default value
     print(f"Applying default configuration ...")
     amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
@@ -52,7 +54,7 @@ It is implemented based on the official specifications found in the Amptek [Digi
     amptek.enable_mca()
 
     print("Aquiring spectrum...")
-    time.sleep(2) # Short acquisition for example
+    time.sleep(10) # Short acquisition for example
 
     print("Disabling MCA...")
     amptek.disable_mca()
@@ -63,6 +65,6 @@ It is implemented based on the official specifications found in the Amptek [Digi
 
     # --- Safely Ramp Down HV to 0V before disconnecting ---
     print("Setting HV to 0V (ramped)...")
-    amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash (to save it for the next power on)
+    amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety start on next power on
     print("HV set to 0V.")
     ```
