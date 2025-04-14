@@ -1,12 +1,10 @@
-# Amptek PX5
+# Amptek MCA
 
-This library provides an interface to control the [Amptek PX5 Digital Pulse Processor (DPP) & MCA](https://www.amptek.com/products/digital-pulse-processors/px5-digital-pulse-processor).
+This library provides an interface to control the following Amptek MCA devices: DP5, PX5, DP5X, DP5G, and MCA8000D.
 
-It is implemented based on the official specifications found in the Amptek [Digital Products Programmer's Guide](https://www.amptek.com/-/media/ametekamptek/documents/resources/products/user-manuals/amptek-digital-products-programmers-guide-b3.pdf?la=en&revision=70db147d-b3c2-4d44-aaa2-374f648a4bc7). A copy of this guide is included in this repository for convenience.
+It is implemented based on the official specifications found in the Amptek [Digital Products Programmer's Guide](https://www.amptek.com/-/media/ametekamptek/documents/resources/products/user-manuals/amptek-digital-products-programmers-guide-b3.pdf?la=en&revision=70db147d-b3c2-4d44-aaa2-374f648a4bc7).
 
-**Note:** While the Programmer's Guide covers multiple Amptek devices, this library has only been tested with the **PX5** model. Compatibility with other models mentioned in the guide is not guaranteed.
-
-![Amptek PX5](px5.jpg)
+**Note:** Only the PX5 device was tested.
 
 # Getting Started
 
@@ -16,17 +14,55 @@ It is implemented based on the official specifications found in the Amptek [Digi
     ```
 2.  Import the library in your Python script:
     ```python
-    from cfis_interfaces import AmptekPX5
+    from cfis_interfaces import AmptekMCA
     ```
-3. Create an instance of the `AmptekPX5` class:
+3.  Use the built-in method to install the `libusb` dependency:
     ```python
-    px5 = AmptekPX5()
+    AmptekMCA.install_libusb()
     ```
-4. Use the built-in method to install the `libusb` dependency (if it is already installed, the method will do nothing):
+4.  On Linux, add a udev rule to allow non-root access:
     ```python
-    px5.install_libusb()
+    AmptekMCA.add_udev_rule()
     ```
-5. On Linux, probably you will want to add a udev rule to allow non-root access to the PX5 device:
+3.  Create an instance of the `AmptekMCA` class:
     ```python
-    px5.add_udev_rule()
+    amptek = AmptekMCA()
+    ```
+6.  Connect, interact, and disconnect as needed:
+    ```python
+    import time
+
+    amptek = AmptekMCA()
+
+    print("Connecting to device...")
+    amptek.connect()
+    print(f"Connected to {DEVICE_TYPE}.")
+
+    # --- Apply a default configuration ---
+    # HVSE is applied ramped until the default value
+    print(f"Applying default configuration ...")
+    amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
+    print("Default configuration applied.")
+
+    # --- Basic Acquisition Example ---
+    print("Clearing spectrum...")
+    amptek.clear_spectrum()
+
+    print("Enabling MCA...")
+    amptek.enable_mca()
+
+    print("Aquiring spectrum...")
+    time.sleep(2) # Short acquisition for example
+
+    print("Disabling MCA...")
+    amptek.disable_mca()
+
+    print("Reading spectrum...")
+    spectrum = amptek.get_spectrum()
+    print(f"Spectrum received ({len(spectrum)} channels).")
+
+    # --- Safely Ramp Down HV to 0V before disconnecting ---
+    print("Setting HV to 0V (ramped)...")
+    amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash (to save it for the next power on)
+    print("HV set to 0V.")
     ```
