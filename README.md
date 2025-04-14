@@ -21,6 +21,11 @@ where `<version>` is one of the [available tags](https://github.com/CFIS-UFRO/cf
 
 Each interface has its own README file with instructions on how to use it inside the `src/cfis_interfaces/` folder.
 
+After installing the library, you can import the interfaces like this:
+```python
+from cfis_interfaces import <InterfaceName>
+```
+
 # For developers
 
 - The idea is to keep this library compatible with Python 3.8 and above.
