@@ -1516,11 +1516,12 @@ class AmptekMCA():
         else:
              self.logger.info("[Amptek MCA] HV already at target voltage.")
 
-    def get_default_available_configurations(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
+    def get_available_default_configurations_with_content(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
         """
-        Scans the 'default' directory in the library path for available default configurations.
+        Scans the 'default' directory in the library path for available default configuration files.
 
-        These files come from the original Amptek SDK.
+        These files come from the original Amptek SDK (https://www.amptek.com/software/dp5-digital-pulse-processor-software),
+        particularly from the folder: DP5 Microsoft SDK > VC++ > vcDP5 > Release > DET_CFG
 
         Structure expected:
         - <library_directory>/
@@ -1646,12 +1647,60 @@ class AmptekMCA():
 
         return available_configs
 
+    def get_available_default_configurations(self) -> Dict[str, List[str]]:
+        """
+        Scans the 'default' directory in the library path for available default configuration files.
+
+        These files come from the original Amptek SDK (https://www.amptek.com/software/dp5-digital-pulse-processor-software),
+        particularly from the folder: DP5 Microsoft SDK > VC++ > vcDP5 > Release > DET_CFG
+
+        This method calls get_available_default_configurations_with_content()
+        internally to read all configurations and then extracts only the names.
+
+        Returns:
+            A dictionary where keys are the device type names (subfolder names)
+            and values are lists of available configuration names (filenames
+            without .txt extension).
+            Returns an empty dictionary if the 'default' folder is not found or
+            if no valid configurations are found by the underlying method.
+
+            Example:
+            {
+                "DP5": ["config1", "config2"],
+                "PX5": ["standard"]
+            }
+        """
+        self.logger.info("[Amptek MCA] Getting list of available default configurations...")
+        simplified_configs: Dict[str, List[str]] = {}
+        try:
+            # Call the method that reads the content
+            all_configs_with_content = self.get_available_default_configurations_with_content()
+
+            # Simplify the result: extract only keys (device types and config names)
+            for device_type, device_configs in all_configs_with_content.items():
+                config_names = sorted(list(device_configs.keys())) # Get config names and sort
+                if config_names:
+                    simplified_configs[device_type] = config_names
+
+            if simplified_configs:
+                 self.logger.info(f"[Amptek MCA] Found available configurations for: {list(simplified_configs.keys())}")
+            else:
+                 self.logger.info("[Amptek MCA] No configurations found by underlying method.")
+
+        except Exception as e:
+            # Catch errors from the underlying method call
+            self.logger.error(f"[Amptek MCA] Error retrieving configurations with content: {e}")
+            # Return empty dict in case of error during retrieval/parsing
+            return {}
+
+        return simplified_configs
+
     def get_default_configuration(self, device_type: str, config_name: str) -> Optional[OrderedDictType[str, Any]]:
         """
         Retrieves a specific default configuration dictionary for a given device type
         and configuration name by reading it from the 'default' subdirectory.
 
-        This method calls get_default_available_configurations() internally to load
+        This method calls get_available_default_configurations_with_content() internally to load
         all available default configurations first.
 
         Args:
@@ -1671,7 +1720,7 @@ class AmptekMCA():
         self.logger.info(f"[Amptek MCA] Getting default configuration '{config_name}' for device '{device_type}'...")
 
         # Get all available default configurations
-        all_configs = self.get_default_available_configurations()
+        all_configs = self.get_available_default_configurations_with_content()
 
         # Look up the specific device type
         device_configs = all_configs.get(device_type)
@@ -1776,4 +1825,4 @@ class AmptekMCA():
 # Example Usage
 if __name__ == "__main__":
     amptek_mca = AmptekMCA()
-    amptek_mca.get_default_available_configurations()
+    print(amptek_mca.get_available_default_configurations())
