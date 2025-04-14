@@ -36,7 +36,6 @@ It is implemented based on the official specifications found in the Amptek [Digi
 
     print("Connecting to device...")
     amptek.connect()
-    print(f"Connected to {DEVICE_TYPE}.")
 
     # --- Apply a default configuration ---
     # You can get a list of available default configurations using:
