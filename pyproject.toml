@@ -15,6 +15,7 @@ license = { file="LICENSE" }
 dependencies = [
 "git+https://github.com/CFIS-UFRO/cfis-utils.git",
 "pyserial",
+"pyusb",
 ]
 
 [project.urls]
