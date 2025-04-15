@@ -164,17 +164,47 @@ class AmptekMCA():
         self.ep_in: Optional[usb.core.Endpoint] = None
         self.logger.info("[Amptek MCA] Initialized.")
 
-    def connect(self) -> None:
+    def connect(self, device_index: int = 0) -> None:
         """
         Find the Amptek MCA device and establish a USB connection.
+        If multiple devices match VID/PID, connect to the one at device_index.
         Claims the interface and finds the IN and OUT endpoints.
+
+        Args:
+            device_index (int, optional): The 0-based index of the device to connect to.
+                                        Defaults to 0 (the first device found).
+        Raises:
+            ValueError: If device_index is out of range.
+            usb.core.NoDeviceError: If no matching devices are found.
+            # Other exceptions like NoBackendError, USBError might be raised
         """
         if self.dev:
             self.logger.warning("[Amptek MCA] Already connected.")
             return
 
-        self.logger.info(f"[Amptek MCA] Searching for device (VID={self.VENDOR_ID:#06x}, PID={self.PRODUCT_ID:#06x})...")
-        self.dev = usb.core.find(idVendor=self.VENDOR_ID, idProduct=self.PRODUCT_ID)
+        self.logger.info(f"[Amptek MCA] Searching for devices (VID={self.VENDOR_ID:#06x}, PID={self.PRODUCT_ID:#06x})...")
+
+        # Get the backend first
+        backend = UsbUtils.get_libusb_backend()
+
+        # Find *all* devices matching VID and PID
+        devices = list(usb.core.find(find_all=True, idVendor=self.VENDOR_ID,  idProduct=self.PRODUCT_ID, backend=backend))
+
+        # Check if devices were found
+        if not devices:
+            self.logger.error("[Amptek MCA] No matching devices found.")
+            raise RuntimeError("No matching Amptek MCA devices found.")
+
+        self.logger.info(f"[Amptek MCA] Found {len(devices)} matching device(s).")
+
+        # Validate the index
+        if not (0 <= device_index < len(devices)):
+            self.logger.error(f"[Amptek MCA] Device index {device_index} is out of range (found {len(devices)} devices).")
+            raise ValueError(f"Device index {device_index} is out of range. Valid indices: 0 to {len(devices) - 1}.")
+
+        # Select the device using the index
+        self.dev = devices[device_index]
+        self.logger.info(f"[Amptek MCA] Selected device at index {device_index} (Bus: {self.dev.bus}, Address: {self.dev.address}).")
 
         if self.dev is None:
             self.logger.error("[Amptek MCA] Device not found.")
@@ -1808,4 +1838,4 @@ class AmptekMCA():
 # Example Usage
 if __name__ == "__main__":
     amptek_mca = AmptekMCA()
-    print(amptek_mca.get_available_default_configurations())
+    amptek_mca.connect()
