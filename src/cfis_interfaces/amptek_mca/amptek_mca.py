@@ -673,23 +673,6 @@ class AmptekMCA():
 
         return spectrum_counts
 
-    def clear_spectrum(self) -> None:
-        """
-        Sends the command to clear the spectrum buffer and associated counters.
-        Raises:
-            AmptekMCAError: If connection or communication fails.
-            AmptekMCAAckError: If the device returns an error ACK.
-        """
-        self.logger.info("[Amptek MCA] Sending Clear Spectrum command...")
-        self._send_request(REQ_CLEAR_SPECTRUM[0], REQ_CLEAR_SPECTRUM[1])
-        pid1, pid2, _ = self._read_response() # Expecting ACK
-
-        if pid1 != 0xFF or pid2 != ACK_OK:
-            # Should have raised AmptekMCAAckError if it was an error ACK
-            raise AmptekMCAError(f"Unexpected response received for Clear Spectrum: PID1={pid1}, PID2={pid2}")
-
-        self.logger.info("[Amptek MCA] Clear Spectrum command acknowledged.")
-
     def send_configuration(self, config_dict: Dict[str, Any], save_to_flash: bool = False) -> None:
         """
         Formats a configuration dictionary into ASCII command strings, splits them
