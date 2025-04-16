@@ -23,3 +23,6 @@ Repository = "https://github.com/CFIS-UFRO/cfis-interfaces"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"cfis_interfaces.amptek_mca" = ["default/**/*.txt"]
