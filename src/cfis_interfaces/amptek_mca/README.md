@@ -58,6 +58,8 @@ The Amptek MCA library relies on `libusb` for generic USB access to communicate 
 
 # Example usage
 
+The library is not documented yet, but you can find an example here to get started. The example demonstrates how to connect to the device, apply a default configuration, acquire a spectrum, and safely ramp down the high voltage (HV) before disconnecting.
+
 ```python
 from cfis_interfaces import AmptekMCA
 import time
