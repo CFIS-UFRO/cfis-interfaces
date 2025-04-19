@@ -16,64 +16,82 @@ It is implemented based on the official specifications found in the Amptek [Digi
     *   Linux: Install it through your package manager, e.g., `sudo apt install git`.
     *   MacOS: Install it through the Xcode command line tools using `xcode-select --install`.
 
-# Getting Started
+# Getting the library
 
-1.  Install the `cfis_interfaces` package:
-    ```bash
-    pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git
-    ```
-2.  Import the library in your Python script:
-    ```python
-    from cfis_interfaces import AmptekMCA
-    ```
-3.  Use the built-in method to install the `libusb` dependency:
-    ```python
-    AmptekMCA.install_libusb()
-    ```
-4.  On Linux, add a udev rule to allow non-root access:
-    ```python
-    AmptekMCA.add_udev_rule()
-    ```
-3.  Create an instance of the `AmptekMCA` class:
-    ```python
-    amptek = AmptekMCA()
-    ```
-6.  Connect, interact, and disconnect as needed:
-    ```python
-    import time
+To get the library, install `cfis-interfaces` directly from the GitHub repository using `pip`:
 
-    amptek = AmptekMCA()
+```bash
+pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git
+```
 
-    print("Connecting to device...")
-    amptek.connect()
+# Libusb installation and configuration
 
-    # --- Apply a default configuration ---
-    # You can get a list of available default configurations using:
-    # amptek.get_available_default_configurations()
-    # HVSE is applied ramped until the default value
-    print(f"Applying default configuration ...")
-    amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
-    print("Default configuration applied.")
+The Amptek MCA library relies on `libusb` for generic USB device access to communicate with the devices. Follow the instructions below to install and configure `libusb` for your operating system:
 
-    # --- Basic Acquisition Example ---
-    print("Clearing spectrum...")
-    amptek.clear_spectrum()
+* Windows:
+    1.  Open a terminal and run the built-in method to install the `libusb` dependency:
+        ```python
+        python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.install_libusb()"
+        ```
+    2.  Download Zadig from the official website: [https://zadig.akeo.ie/](https://zadig.akeo.ie/).
+    3.  Connect the Amptek device to your computer.
+    4.  Open Zadig **as Administrator** (right-click on the executable and select "Run as administrator").
+    5.  Go to `Options > List All Devices`.
+    6.  In the Zadig window, select the Amptek device (VID `10C4`, PID `842A`) and choose the `WinUSB` driver from the target driver list.
+    7.  Click the `Install Driver` (or `Replace Driver`) button to install the driver.
+* Linux:
+    1.  Open the terminal and run the built-in method to install the `libusb` dependency:
+        ```python
+        python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.install_libusb()"
+        ```
+    2. Optionally (but recommended), run the built-in method to add a udev rule for non-root access:
+        ```python
+        python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.add_udev_rule()"
+        ```
+*  MacOS:
+    1.  Open the terminal and run the built-in method to install the `libusb` dependency:
+        ```python
+        python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.install_libusb()"
+        ```
 
-    print("Enabling MCA...")
-    amptek.enable_mca()
+# Example usage
 
-    print("Aquiring spectrum...")
-    time.sleep(10) # Short acquisition for example
+```python
+from cfis_interfaces import AmptekMCA
+import time
 
-    print("Disabling MCA...")
-    amptek.disable_mca()
+amptek = AmptekMCA()
 
-    print("Reading spectrum...")
-    spectrum = amptek.get_spectrum()
-    print(f"Spectrum received ({len(spectrum)} channels).")
+print("Connecting to device...")
+amptek.connect()
 
-    # --- Safely Ramp Down HV to 0V before disconnecting ---
-    print("Setting HV to 0V (ramped)...")
-    amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety start on next power on
-    print("HV set to 0V.")
-    ```
+# --- Apply a default configuration ---
+# You can get a list of available default configurations using:
+# amptek.get_available_default_configurations()
+# HVSE is applied ramped until the default value
+print(f"Applying default configuration ...")
+amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
+print("Default configuration applied.")
+
+# --- Basic Acquisition Example ---
+print("Clearing spectrum...")
+amptek.clear_spectrum()
+
+print("Enabling MCA...")
+amptek.enable_mca()
+
+print("Aquiring spectrum...")
+time.sleep(10) # Short acquisition for example
+
+print("Disabling MCA...")
+amptek.disable_mca()
+
+print("Reading spectrum...")
+spectrum = amptek.get_spectrum()
+print(f"Spectrum received ({len(spectrum)} channels).")
+
+# --- Safely Ramp Down HV to 0V before disconnecting ---
+print("Setting HV to 0V (ramped)...")
+amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety start on next power on
+print("HV set to 0V.")
+```
