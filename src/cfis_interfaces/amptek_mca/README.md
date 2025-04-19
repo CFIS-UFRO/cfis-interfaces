@@ -39,6 +39,8 @@ The Amptek MCA library relies on `libusb` for generic USB access to communicate 
     5.  Go to `Options > List All Devices`.
     6.  In the Zadig window, select the Amptek device (VID `10C4`, PID `842A`) and choose the `WinUSB` driver from the target driver list.
     7.  Click the `Install Driver` (or `Replace Driver`) button to install the driver.
+    8.  Repeat steps 2-7 for any additional Amptek devices you want to connect.
+    9.  Connect the Amptek devices **always** to the same USB port.
 * Linux:
     1.  Open the terminal and run the built-in method to install the `libusb` dependency:
         ```python
