@@ -4,7 +4,7 @@ This library provides an interface to control the following Amptek MCA devices: 
 
 It is implemented based on the official specifications found in the Amptek [Digital Products Programmer's Guide](https://www.amptek.com/-/media/ametekamptek/documents/resources/products/user-manuals/amptek-digital-products-programmers-guide-b3.pdf?la=en&revision=70db147d-b3c2-4d44-aaa2-374f648a4bc7).
 
-**Note:** Only the PX5 device was tested.
+**Note:** Only the PX5 and PC5 devices were tested.
 
 # Getting Started
 
