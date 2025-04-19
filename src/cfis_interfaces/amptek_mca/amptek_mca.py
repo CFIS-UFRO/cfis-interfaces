@@ -5,11 +5,11 @@ from typing import Optional, Tuple, Union, Dict, Any, List, OrderedDict as Order
 import math
 from collections import OrderedDict
 from pathlib import Path
-
+# CFIS libraries
+from cfis_utils import UsbUtils, LoggerUtils
 # Third-party libraries
 import usb.core
 import usb.util
-from cfis_utils import UsbUtils, LoggerUtils
 
 # Constants from Amptek Programmer's Guide
 SYNC_BYTE_1 = 0xF5
