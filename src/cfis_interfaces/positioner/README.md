@@ -8,6 +8,16 @@ It is designed for controllers that may not provide reliable command acknowledgm
 
 For detailed documentation on G-code commands, please refer to: [https://reprap.org/wiki/G-code](https://reprap.org/wiki/G-code)
 
+# Requirements
+
+*   Python 3.8 or higher.
+    *   Windows: [https://www.python.org/](https://www.python.org/)
+    *   Linux and MacOS: Usually pre-installed.
+*   Git.
+    *   Windows: [https://git-scm.com/download/win](https://git-scm.com/download/win)
+    *   Linux: Install it through your package manager, e.g., `sudo apt install git`.
+    *   MacOS: Install it through the Xcode command line tools using `xcode-select --install`.
+
 # Getting Started
 
 1.  Install the `cfis_interfaces` package:

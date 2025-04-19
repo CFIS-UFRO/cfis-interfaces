@@ -6,6 +6,16 @@ It is implemented based on the official specifications found in the Amptek [Digi
 
 **Note:** Only the PX5 and PC5 devices were tested.
 
+# Requirements
+
+*   Python 3.8 or higher.
+    *   Windows: [https://www.python.org/](https://www.python.org/)
+    *   Linux and MacOS: Usually pre-installed.
+*   Git.
+    *   Windows: [https://git-scm.com/download/win](https://git-scm.com/download/win)
+    *   Linux: Install it through your package manager, e.g., `sudo apt install git`.
+    *   MacOS: Install it through the Xcode command line tools using `xcode-select --install`.
+
 # Getting Started
 
 1.  Install the `cfis_interfaces` package:
