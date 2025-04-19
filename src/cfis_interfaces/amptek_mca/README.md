@@ -29,7 +29,7 @@ pip install git+https://github.com/CFIS-UFRO/cfis-interfaces.git
 The Amptek MCA library relies on `libusb` for generic USB access to communicate with the devices. Follow the instructions below to install and configure `libusb` for your operating system:
 
 * Windows:
-    1.  Open a terminal and run the built-in method to install the `libusb` dependency:
+    1.  Open the terminal and run the built-in method to install the `libusb` dependency:
         ```python
         python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.install_libusb()"
         ```
