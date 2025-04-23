@@ -1787,7 +1787,7 @@ class AmptekMCA():
             self.logger.info(f"[Amptek MCA] Sending main configuration parameters ({len(config_to_apply)} items)...")
             try:
                 # Use save_to_flash=True for the main config part
-                self.send_text_configuration(config_to_apply, save_to_flash=False) # Do not save in flash, avoid memory degradation
+                self.send_configuration(config_to_apply, save_to_flash=False) # Do not save in flash, avoid memory degradation
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                 self.logger.error(f"[Amptek MCA] Error sending main configuration part: {e}")
                 raise # Re-raise the exception
