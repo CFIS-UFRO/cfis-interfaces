@@ -78,6 +78,9 @@ amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
 print("Default configuration applied.")
 
 # --- Basic Acquisition Example ---
+print("Disabling MCA...")  # Usually it will be enabled when applying the default configuration
+amptek.disable_mca()
+
 print("Clearing spectrum...")
 amptek.clear_spectrum()
 
@@ -98,4 +101,9 @@ print(f"Spectrum received ({len(spectrum)} channels).")
 print("Setting HV to 0V (ramped)...")
 amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety start on next power on
 print("HV set to 0V.")
+
+# --- Disconnecting ---
+print("Disconnecting...")
+amptek.disconnect()
+print("Disconnected.")
 ```
