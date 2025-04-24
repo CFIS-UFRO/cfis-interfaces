@@ -5,6 +5,7 @@ from typing import Optional, Tuple, Union, Dict, Any, List, OrderedDict as Order
 import math
 from collections import OrderedDict
 from pathlib import Path
+import logging
 # CFIS libraries
 from cfis_utils import UsbUtils, LoggerUtils
 # Third-party libraries
@@ -154,17 +155,27 @@ class AmptekMCA():
         5: "DP5-X",
     }
 
-    def __init__(self) -> None:
+    def __init__(self,
+                logger: Optional[logging.Logger] = None,
+                logger_name: str = "AmptekMCA",
+                logger_level: int = logging.INFO
+            ) -> None:
         """
         Initialize the Amptek MCA communication class.
+
+        Args:
+            logger (Optional[logging.Logger]): An optional logger instance. If None,
+                                       a new logger will be created with the provided name and level.
+            logger_name (str): The name of the new logger. Defaults to "AmptekMCA".
+            logger_level (int): The logging level for the new logger. Defaults to logging.INFO.
         """
-        self.logger = LoggerUtils.get_logger()
+        self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
         self.dev: Optional[usb.core.Device] = None
         self.ep_out: Optional[usb.core.Endpoint] = None
         self.ep_in: Optional[usb.core.Endpoint] = None
         self.last_status: Dict[str, Any] = {}
         self.model: str = None
-        self.logger.info("[Amptek MCA] Initialized.")
+        self.logger.info("[Amptek MCA] Amptek MCA class initialized.")
 
     def connect(self, device_index: int = 0) -> None:
         """
@@ -218,20 +229,20 @@ class AmptekMCA():
         try:
             # Detach kernel driver if active (Linux/macOS)
             if self.dev.is_kernel_driver_active(0):
-                self.logger.info("[Amptek MCA] Detaching kernel driver.")
+                self.logger.debug("[Amptek MCA] Detaching kernel driver.")
                 self.dev.detach_kernel_driver(0)
         except usb.core.USBError as e:
              # This can happen if the driver is already detached or on Windows
              self.logger.warning(f"[Amptek MCA] Could not detach kernel driver (might be okay): {e}")
         except NotImplementedError:
              # is_kernel_driver_active not implemented on all platforms (e.g., Windows)
-             self.logger.info("[Amptek MCA] Kernel driver check not applicable on this platform.")
+             self.logger.debug("[Amptek MCA] Kernel driver check not applicable on this platform.")
 
 
         try:
             # Set the active configuration. Needs to be done before claiming interface.
             self.dev.set_configuration()
-            self.logger.info("[Amptek MCA] Set USB configuration.")
+            self.logger.debug("[Amptek MCA] Set USB configuration.")
         except usb.core.USBError as e:
             self.logger.error(f"[Amptek MCA] Could not set configuration: {e}")
             self.dev = None # Ensure disconnect releases nothing
@@ -265,8 +276,8 @@ class AmptekMCA():
             self.dev = None # Ensure disconnect releases nothing
             raise AmptekMCAError("Could not find required USB endpoints (0x81 IN, 0x02 OUT).")
 
-        self.logger.info(f"[Amptek MCA] Found EP IN address: {self.ep_in.bEndpointAddress:#04x}")
-        self.logger.info(f"[Amptek MCA] Found EP OUT address: {self.ep_out.bEndpointAddress:#04x}")
+        self.logger.debug(f"[Amptek MCA] Found EP IN address: {self.ep_in.bEndpointAddress:#04x}")
+        self.logger.debug(f"[Amptek MCA] Found EP OUT address: {self.ep_out.bEndpointAddress:#04x}")
         self.logger.info("[Amptek MCA] Connection established.")
 
         # Get the status after connecting
@@ -283,7 +294,7 @@ class AmptekMCA():
             self.logger.info("[Amptek MCA] Disconnecting...")
             try:
                 usb.util.dispose_resources(self.dev)
-                self.logger.info("[Amptek MCA] Disposed USB resources.")
+                self.logger.debug("[Amptek MCA] Disposed USB resources.")
             except usb.core.USBError as e:
                  self.logger.warning(f"[Amptek MCA] Error during disconnect/resource disposal: {e}")
             except Exception as e:
@@ -522,7 +533,7 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
         """
         status_bytes = self.get_status_bytes()
-        self.logger.info(f"[Amptek MCA] Parsing status bytes...")
+        self.logger.debug(f"[Amptek MCA] Parsing status bytes...")
         status_dict: Dict[str, Any] = {}
 
         try:
@@ -611,7 +622,7 @@ class AmptekMCA():
             bl_ver_map = {0xFF: "Original", 0x80: "7.00.00", 0x7F: "7.00.01"}
             status_dict['bootloader_version'] = bl_ver_map.get(status_bytes[48], f"Unknown ({status_bytes[48]:#04x})")
 
-            self.logger.info(f"[Amptek MCA] Status parsed successfully.")
+            self.logger.debug(f"[Amptek MCA] Status parsed successfully.")
 
         except struct.error as e:
             self.logger.error(f"[Amptek MCA] Failed to unpack status bytes: {e}")
@@ -707,7 +718,7 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
         """
         spectrum_bytes = self.get_spectrum_bytes()
-        self.logger.info("[Amptek MCA] Parsing spectrum bytes...")
+        self.logger.debug("[Amptek MCA] Parsing spectrum bytes...")
 
         if len(spectrum_bytes) % 3 != 0:
             self.logger.error(f"[Amptek MCA] Invalid spectrum data length ({len(spectrum_bytes)} bytes), not divisible by 3.")
@@ -727,7 +738,7 @@ class AmptekMCA():
                 count = struct.unpack('<I', count_bytes)[0]
                 spectrum_counts.append(count)
 
-            self.logger.info(f"[Amptek MCA] Spectrum parsed successfully ({num_channels} channels).")
+            self.logger.debug(f"[Amptek MCA] Spectrum parsed successfully ({num_channels} channels).")
 
         except struct.error as e:
             self.logger.error(f"[Amptek MCA] Failed to unpack spectrum bytes: {e}")
@@ -940,7 +951,7 @@ class AmptekMCA():
             ValueError: If the input command list leads to an invalid request.
         """
         response_bytes = self.read_configuration_bytes(commands_to_read)
-        self.logger.info("[Amptek MCA] Parsing configuration readback response...")
+        self.logger.debug("[Amptek MCA] Parsing configuration readback response...")
 
         readback_dict: Dict[str, str] = {}
         try:
@@ -962,7 +973,7 @@ class AmptekMCA():
 
                 readback_dict[command] = value # Store value as string
 
-            self.logger.info("[Amptek MCA] Configuration readback parsed successfully.")
+            self.logger.debug("[Amptek MCA] Configuration readback parsed successfully.")
 
         except UnicodeDecodeError:
             self.logger.error("[Amptek MCA] Failed to decode readback response as ASCII.")
@@ -1213,7 +1224,7 @@ class AmptekMCA():
         # 1. Determine Device ID if not provided
         _device_id_str = device_id_str # Use a local copy
         if _device_id_str is None:
-            self.logger.info("[Amptek MCA] Device ID not provided, calling get_status()...")
+            self.logger.debug("[Amptek MCA] Device ID not provided, calling get_status()...")
             try:
                 internal_status = self.get_last_status() # Get parsed status
                 _device_id_str = internal_status.get('device_id', 'Unknown')
@@ -1231,7 +1242,7 @@ class AmptekMCA():
                      param_info_result[name.upper()] = {"error": f"Failed to get status: {e}"}
                 return param_info_result
 
-        self.logger.info(f"[Amptek MCA] Using Device ID: {_device_id_str}")
+        self.logger.debug(f"[Amptek MCA] Using Device ID: {_device_id_str}")
 
         # 2. Normalize input parameter names to a list of uppercase strings
         if isinstance(param_names, str):
@@ -1242,7 +1253,7 @@ class AmptekMCA():
         # 3. Get current configuration if not provided
         _current_config = current_config # Use local copy
         if _current_config is None:
-            self.logger.info("[Amptek MCA] Current config not provided, calling read_configuration...")
+            self.logger.debug("[Amptek MCA] Current config not provided, calling read_configuration...")
             try:
                 # Read only the values for the requested parameters
                 _current_config = self.read_configuration(param_names_list)
@@ -1285,7 +1296,7 @@ class AmptekMCA():
 
                 # Ensure we have status info for polarity check, fetch if needed
                 if internal_status is None:
-                    self.logger.info(f"[Amptek MCA] Fetching status to determine HV polarity for {param_name} range...")
+                    self.logger.debug(f"[Amptek MCA] Fetching status to determine HV polarity for {param_name} range...")
                     try:
                         internal_status = self.get_status()
                     except (AmptekMCAError, AmptekMCAAckError) as e:
@@ -1471,7 +1482,7 @@ class AmptekMCA():
             'AUO2=STREAM': ['DP5X']
         }
     
-    def parameter_is_supported(self, parameter: str, device_id: str = None, verbose: bool = True) -> bool:
+    def parameter_is_supported(self, parameter: str, device_id: str = None) -> bool:
         """
         Checks if a given parameter is supported by the device.
 
@@ -1493,7 +1504,7 @@ class AmptekMCA():
         if parameter in unsupported_devices:
             if device_id in unsupported_devices[parameter]:
                 # Only log if the parameter is not supported by the device
-                if verbose: self.logger.warning(f"[Amptek MCA] Parameter '{parameter}' is NOT supported by device '{device_id}'.")
+                self.logger.debug(f"[Amptek MCA] Parameter '{parameter}' is NOT supported by device '{device_id}'.")
                 return False
             else:
                 return True
@@ -1644,7 +1655,7 @@ class AmptekMCA():
         else:
              self.logger.info("[Amptek MCA] HV already at target voltage.")
 
-    def get_available_default_configurations_with_content(self, verbose: bool = False) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
+    def get_available_default_configurations_with_content(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
         """
         Scans the 'default' directory in the library path for available default configuration files.
 
@@ -1664,10 +1675,6 @@ class AmptekMCA():
         Each .txt file should contain configuration parameters in the format
         "KEY1=VALUE1;KEY2=VALUE2;...". Lines starting with '[' and ending
         with ']' (section headers) are ignored.
-
-        Args:
-            verbose: If True, logs detailed information about the parsing process.
-            If False, logs only warnings and errors.
 
         Returns:
             A nested dictionary where the first key is the device type (subfolder name),
@@ -1708,7 +1715,7 @@ class AmptekMCA():
         for device_dir in default_dir.iterdir():
             if device_dir.is_dir():
                 device_type = device_dir.name # e.g., "DP5", "PX5"
-                if verbose: self.logger.debug(f"[Amptek MCA] Found device type folder: {device_type}")
+                self.logger.debug(f"[Amptek MCA] Found device type folder: {device_type}")
                 device_configs: Dict[str, OrderedDictType[str, str]] = {}
 
                 # Iterate through .txt files in the device type subfolder
@@ -1739,20 +1746,20 @@ class AmptekMCA():
                                             if key and value: # Ensure key and value are not empty
                                                 parsed_config[key] = value
                                             elif not key:
-                                                if verbose: self.logger.debug(f"[Amptek MCA] Skipping empty key in part '{part}' in file {config_file.name}, line {line_num}")
+                                                self.logger.debug(f"[Amptek MCA] Skipping empty key in part '{part}' in file {config_file.name}, line {line_num}")
                                             elif not value:
-                                                if verbose: self.logger.debug(f"[Amptek MCA] Skipping empty value in part '{part}' in file {config_file.name}, line {line_num}")
+                                                self.logger.debug(f"[Amptek MCA] Skipping empty value in part '{part}' in file {config_file.name}, line {line_num}")
                                         else:
                                             # Handle parts without '=' if necessary
-                                            if verbose: self.logger.warning(f"[Amptek MCA] Skipping malformed part '{part}' (no '=') in file {config_file.name}, line {line_num}")
+                                            self.logger.warning(f"[Amptek MCA] Skipping malformed part '{part}' (no '=') in file {config_file.name}, line {line_num}")
 
                             if parsed_config:
                                 # Remove unsupported parameters
-                                if verbose: self.logger.info(f"[Amptek MCA] Removing unsupported parameters from config '{config_name}' for device '{device_type}'...")
-                                parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type, verbose=verbose)}
+                                self.logger.debug(f"[Amptek MCA] Removing unsupported parameters from config '{config_name}' for device '{device_type}'...")
+                                parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type)}
                                 # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
                                 if 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
-                                    if verbose: self.logger.warning(f"[Amptek MCA] Fixing RTDS value in config '{config_name}' for device '{device_type}' from 0 to 2.")
+                                    self.logger.debug(f"[Amptek MCA] Fixing RTDS value in config '{config_name}' for device '{device_type}' from 0 to 2.")
                                     parsed_config['RTDS'] = '2'
                                 # Save
                                 device_configs[config_name] = parsed_config
