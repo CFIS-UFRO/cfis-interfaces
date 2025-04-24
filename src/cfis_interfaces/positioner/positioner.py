@@ -66,7 +66,7 @@ class Positioner:
         self._reader_thread = None
         self._reading_active = False
         self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
-        self.logger.info(f"[POSITIONER] Initializing Positioner on port {self.port} at {self.baudrate} baud.")
+        self.logger.info(f"[POSITIONER] Positioner class initialized on port {self.port} at {self.baudrate} baud.")
         self.logger.debug(f"[POSITIONER] Default wait time set to: {TimeUtils.format_time(self.default_wait_time)}")
 
     def _background_reader(self):
