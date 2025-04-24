@@ -162,6 +162,8 @@ class AmptekMCA():
         self.dev: Optional[usb.core.Device] = None
         self.ep_out: Optional[usb.core.Endpoint] = None
         self.ep_in: Optional[usb.core.Endpoint] = None
+        self.last_status: Dict[str, Any] = {}
+        self.model: str = None
         self.logger.info("[Amptek MCA] Initialized.")
 
     def connect(self, device_index: int = 0) -> None:
@@ -169,6 +171,7 @@ class AmptekMCA():
         Find the Amptek MCA device and establish a USB connection.
         If multiple devices match VID/PID, connect to the one at device_index.
         Claims the interface and finds the IN and OUT endpoints.
+        Calls get_status() to save the status for later use.
 
         Args:
             device_index (int, optional): The 0-based index of the device to connect to.
@@ -265,6 +268,12 @@ class AmptekMCA():
         self.logger.info(f"[Amptek MCA] Found EP IN address: {self.ep_in.bEndpointAddress:#04x}")
         self.logger.info(f"[Amptek MCA] Found EP OUT address: {self.ep_out.bEndpointAddress:#04x}")
         self.logger.info("[Amptek MCA] Connection established.")
+
+        # Get the status after connecting
+        self.logger.info("[Amptek MCA] Requesting initial status...")
+        self.get_status()  # Error handling is done in get_status()
+        self.logger.info("[Amptek MCA] Initial status received.")
+        self.logger.info(f"[Amptek MCA] Device model: {self.model}")
 
     def disconnect(self) -> None:
         """
@@ -537,7 +546,7 @@ class AmptekMCA():
             status_dict['serial_number'] = struct.unpack('<I', status_bytes[26:30])[0]
 
             # HV (signed short, 0.5V/count, byte 30=MSB, byte 31=LSB -> Big Endian)
-            status_dict['hv_mon_v'] = struct.unpack('>h', status_bytes[30:32])[0] * 0.5
+            status_dict['hv'] = struct.unpack('>h', status_bytes[30:32])[0] * 0.5
             # Parse Detector Temp (Bytes 32-33): 12-bit value = (byte32 & 0x0F) << 8 | byte33, scale 0.1K/count
             detector_temp_value_12bit = ((status_bytes[32] & 0x0F) << 8) | status_bytes[33]
             status_dict['detector_temp_k'] = detector_temp_value_12bit * 0.1
@@ -545,14 +554,14 @@ class AmptekMCA():
             status_dict['board_temp_c'] = struct.unpack('<b', bytes([status_bytes[34]]))[0]
 
             # Parse device ID
-            status_dict['device_id_str'] = self.DEVICE_ID_MAP.get(status_bytes[39], f"Unknown ({status_bytes[39]})")
+            status_dict['device_id'] = self.DEVICE_ID_MAP.get(status_bytes[39], f"Unknown ({status_bytes[39]})")
 
             # Parse status flags from bytes 35, 36, and 38 into a single dictionary
             byte35 = status_bytes[35]
             byte36 = status_bytes[36]
             byte38 = status_bytes[38]
             # Get device type string determined earlier
-            device_id_str = status_dict.get('device_id_str', 'Unknown') # Default if not found
+            device_id = status_dict.get('device_id', 'Unknown') # Default if not found
 
             # Start with flags from byte 36 and common flags from byte 35
             flags = {
@@ -574,22 +583,22 @@ class AmptekMCA():
 
             # Add flags from byte 38 based on device type
             # Bit 7: PC5/Jumper Status/Device OK
-            if device_id_str in ["DP5", "DP5G", "TB5"]:
+            if device_id in ["DP5", "DP5G", "TB5"]:
                 flags['pc5_detected'] = bool(byte38 & 0x80)
-            elif device_id_str == "PX5":
+            elif device_id == "PX5":
                 flags['hv_jumper_ok'] = bool(byte38 & 0x80) # 0=Error, 1=Normal
 
             # Bit 6: HV Polarity (Not applicable for DP5G/TB5/MCA8000D)
-            if device_id_str in ["DP5", "PX5", "DP5-X"]:
+            if device_id in ["DP5", "PX5", "DP5-X"]:
                 flags['hv_polarity_positive'] = bool(byte38 & 0x40) # False=Negative
 
             # Bit 5: Preamp Supply Voltage (Not applicable for DP5G/TB5/DP5X/MCA8000D)
-            if device_id_str in ["DP5", "PX5"]:
+            if device_id in ["DP5", "PX5"]:
                 flags['preamp_supply_8_5v'] = bool(byte38 & 0x20) # False means 5V
 
             # Handle byte 35, bit 6 (0x40) based on device type
             bit6_value = bool(byte35 & 0x40)
-            if device_id_str == "MCA8000D":
+            if device_id == "MCA8000D":
                 flags['preset_livetime_reached'] = bit6_value
             else:
                 # Default interpretation for non-MCA8000D devices
@@ -616,7 +625,33 @@ class AmptekMCA():
             self.logger.error(f"[Amptek MCA] Unexpected error parsing status: {e}")
             raise AmptekMCAError(f"Unexpected error parsing status: {e}")
 
+        self.last_status = status_dict # Save the status for later use
+        if self.model is None:
+            self.model = status_dict.get('device_id', 'Unknown')  # Set model if not already set
+
         return status_dict
+
+    def get_last_status(self) -> Dict[str, Any]:
+        """
+        Returns the last status dictionary received from the device.
+        If no status has been received yet, it will call get_status() to fetch the latest status.
+
+        Returns:
+            A dictionary containing the last status information.
+        """
+        if not self.last_status:
+            self.get_status()  # Ensure we have the latest status
+        return self.last_status
+    
+    def get_model(self) -> str:
+        """
+        Returns the model of the connected device.
+        If no model has been set yet, returns 'Unknown'.
+
+        Returns:
+            The model string of the connected device.
+        """
+        return self.model if self.model else 'Unknown'
 
     def get_spectrum_bytes(self) -> bytes:
         """
@@ -1180,8 +1215,8 @@ class AmptekMCA():
         if _device_id_str is None:
             self.logger.info("[Amptek MCA] Device ID not provided, calling get_status()...")
             try:
-                internal_status = self.get_status() # Get parsed status
-                _device_id_str = internal_status.get('device_id_str', 'Unknown')
+                internal_status = self.get_last_status() # Get parsed status
+                _device_id_str = internal_status.get('device_id', 'Unknown')
                 if _device_id_str == 'Unknown':
                      self.logger.warning("[Amptek MCA] Could not determine device ID from status.")
                      # Return error for all requested params
@@ -1386,6 +1421,86 @@ class AmptekMCA():
 
         return param_info_result
 
+    def get_unsupported_devices_per_parameter(self) -> List[str]:
+        """
+        Returns a dict of parameter names and the devices that do not support them.
+        If some parameter is not present in the dictionary, it is assumed to be supported by all devices.
+
+        Returns:
+            A dictionary where keys are parameter names and values are lists of device IDs
+            that do not support the parameter.
+        """
+        return {
+            'AINP': ['MCA8000D'],
+            'AU34': ['DP5', 'DP5X', 'MCA8000D', 'Mini-X2'],
+            'BLRD': ['MCA8000D'],
+            'BLRM': ['MCA8000D'],
+            'BLRU': ['MCA8000D'],
+            'BOOT': ['PX5', 'DP5G', 'MCA8000D', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'CON1': ['DP5', 'DP5X', 'MCA8000D', 'Mini-X2'],
+            'CON2': ['DP5', 'DP5X', 'MCA8000D', 'Mini-X2'],
+            'CLCK': ['MCA8000D', 'Mini-X2'],
+            'CLKL': ['MCA8000D', 'Mini-X2'],
+            'CUSP': ['MCA8000D', 'Mini-X2'],
+            'DACF': ['MCA8000D', 'Mini-X2'],
+            'DACO': ['MCA8000D', 'Mini-X2'],
+            'GAIF': ['MCA8000D', 'Mini-X2'],
+            'GATE': ['PX5', 'DP5G', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'HVSE': ['MCA8000D'],
+            'INOF': ['DP5G', 'MCA8000D', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'INOG': ['DP5', 'DP5X', 'DP5G', 'MCA8000D', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'PAPZ': ['DP5G', 'MCA8000D', 'DP5X', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'PDMD': ['DP5X', 'Mini-X2'],
+            'PREL': ['DP5', 'PX5', 'DP5X', 'DP5G', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'PURE': ['Mini-X2'],
+            'PURS': ['PX5', 'DP5G', 'MCA8000D', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'RESL': ['MCA8000D', 'Mini-X2'],
+            'RTDD': ['MCA8000D', 'Mini-X2'],
+            'RTDE': ['MCA8000D', 'Mini-X2'],
+            'RTDS': ['MCA8000D', 'Mini-X2'],
+            'RTDT': ['MCA8000D', 'Mini-X2'],
+            'RTDW': ['MCA8000D', 'Mini-X2'],
+            'SCTC': ['DP5', 'PX5', 'DP5X', 'MCA8000D', 'Mini-X2'],
+            'SYNC': ['MCA8000D', 'Mini-X2'],
+            'TECS': ['DP5G', 'MCA8000D', 'DP5X', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'TFLA': ['MCA8000D', 'Mini-X2'],
+            'THFA': ['MCA8000D', 'Mini-X2'],
+            'TPFA': ['MCA8000D', 'Mini-X2'],
+            'TPMO': ['MCA8000D', 'DP5X', 'Mini-X2'],
+            'VOLU': ['DP5', 'DP5G', 'MCA8000D', 'DP5X', 'Mini-X2', 'TB-5', 'Gamma-Rad5'],
+            'AUO2=STREAM': ['DP5X']
+        }
+    
+    def parameter_is_supported(self, parameter: str, device_id: str = None, verbose: bool = True) -> bool:
+        """
+        Checks if a given parameter is supported by the device.
+
+        Args:
+            parameter: The parameter name (string) to check.
+            device_id: The device ID string (e.g., "PX5", "DP5G"). If None, uses the
+                       current device ID.
+            verbose: If True, logs a warning if the parameter is not supported.
+                       If False, suppresses the warning.
+        Returns:
+            True if the parameter is supported, False otherwise.
+        """
+        if device_id is None:
+            device_id = self.get_model()
+        if device_id == "Unknown":
+            self.logger.warning("[Amptek MCA] Device ID is unknown, cannot check parameter support.")
+            return False
+        unsupported_devices = self.get_unsupported_devices_per_parameter()
+        if parameter in unsupported_devices:
+            if device_id in unsupported_devices[parameter]:
+                # Only log if the parameter is not supported by the device
+                if verbose: self.logger.warning(f"[Amptek MCA] Parameter '{parameter}' is NOT supported by device '{device_id}'.")
+                return False
+            else:
+                return True
+        else:
+            return True
+
+
     def set_HVSE(self, target_voltage: Union[float, int, str], step: float = 50.0, delay_sec: float = 0.5, save_to_flash: bool = False) -> None:
         """
         Sets the High Voltage supply, ramping the voltage in steps if necessary.
@@ -1436,9 +1551,9 @@ class AmptekMCA():
 
         # --- Get Current Status for Polarity and Current HV ---
         try:
-            current_status = self.get_status()
+            current_status = self.get_last_status() # Get status dictionary
             # Check device support first (simplistic check, assumes HVSE support if not DP5G/MCA)
-            device_id = current_status.get('device_id_str', 'Unknown')
+            device_id = current_status.get('device_id', 'Unknown')
             if device_id in ["DP5G", "MCA8000D"]:
                  raise AmptekMCAError(f"HVSE command is not supported by device {device_id}")
 
@@ -1529,7 +1644,7 @@ class AmptekMCA():
         else:
              self.logger.info("[Amptek MCA] HV already at target voltage.")
 
-    def get_available_default_configurations_with_content(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
+    def get_available_default_configurations_with_content(self, verbose: bool = False) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
         """
         Scans the 'default' directory in the library path for available default configuration files.
 
@@ -1549,6 +1664,10 @@ class AmptekMCA():
         Each .txt file should contain configuration parameters in the format
         "KEY1=VALUE1;KEY2=VALUE2;...". Lines starting with '[' and ending
         with ']' (section headers) are ignored.
+
+        Args:
+            verbose: If True, logs detailed information about the parsing process.
+            If False, logs only warnings and errors.
 
         Returns:
             A nested dictionary where the first key is the device type (subfolder name),
@@ -1589,7 +1708,7 @@ class AmptekMCA():
         for device_dir in default_dir.iterdir():
             if device_dir.is_dir():
                 device_type = device_dir.name # e.g., "DP5", "PX5"
-                self.logger.debug(f"[Amptek MCA] Found device type folder: {device_type}")
+                if verbose: self.logger.debug(f"[Amptek MCA] Found device type folder: {device_type}")
                 device_configs: Dict[str, OrderedDictType[str, str]] = {}
 
                 # Iterate through .txt files in the device type subfolder
@@ -1616,31 +1735,22 @@ class AmptekMCA():
                                         key_value = part.split('=', 1)
                                         if len(key_value) == 2:
                                             key = key_value[0].strip().upper() # Use uppercase keys
-                                            value_str = key_value[1].strip() # Get value as string first
-                                            typed_value: Any = value_str     # Default to string
-
-                                            if key: # Ensure key is not empty
-                                                # Attempt to convert value to numeric types
-                                                # Try integer first
-                                                try:
-                                                    typed_value = int(value_str)
-                                                except ValueError:
-                                                    # If int fails, try float
-                                                    try:
-                                                        typed_value = float(value_str)
-                                                    except ValueError:
-                                                        # If float also fails, keep it as original string
-                                                        pass # typed_value remains value_str
-
-                                                # Store the potentially converted value
-                                                parsed_config[key] = typed_value
-                                            else:
-                                                self.logger.warning(f"[Amptek MCA] Skipping empty key in part '{part}' in file {config_file.name}, line {line_num}")
+                                            value = key_value[1].strip() # Get value
+                                            if key and value: # Ensure key and value are not empty
+                                                parsed_config[key] = value
+                                            elif not key:
+                                                if verbose: self.logger.debug(f"[Amptek MCA] Skipping empty key in part '{part}' in file {config_file.name}, line {line_num}")
+                                            elif not value:
+                                                if verbose: self.logger.debug(f"[Amptek MCA] Skipping empty value in part '{part}' in file {config_file.name}, line {line_num}")
                                         else:
-                                             # Handle parts without '=' if necessary
-                                             self.logger.warning(f"[Amptek MCA] Skipping malformed part '{part}' (no '=') in file {config_file.name}, line {line_num}")
+                                            # Handle parts without '=' if necessary
+                                            if verbose: self.logger.warning(f"[Amptek MCA] Skipping malformed part '{part}' (no '=') in file {config_file.name}, line {line_num}")
 
                             if parsed_config:
+                                # Remove unsupported parameters
+                                if verbose: self.logger.info(f"[Amptek MCA] Removing unsupported parameters from config '{config_name}' for device '{device_type}'...")
+                                parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type, verbose=verbose)}
+                                # Save
                                 device_configs[config_name] = parsed_config
                             else:
                                 self.logger.warning(f"[Amptek MCA] No valid configuration pairs found in {config_file.name}")
@@ -1683,7 +1793,6 @@ class AmptekMCA():
                 "PX5": ["standard"]
             }
         """
-        self.logger.info("[Amptek MCA] Getting list of available default configurations...")
         simplified_configs: Dict[str, List[str]] = {}
         try:
             # Call the method that reads the content
@@ -1694,11 +1803,6 @@ class AmptekMCA():
                 config_names = sorted(list(device_configs.keys())) # Get config names and sort
                 if config_names:
                     simplified_configs[device_type] = config_names
-
-            if simplified_configs:
-                 self.logger.info(f"[Amptek MCA] Found available configurations for: {list(simplified_configs.keys())}")
-            else:
-                 self.logger.info("[Amptek MCA] No configurations found by underlying method.")
 
         except Exception as e:
             # Catch errors from the underlying method call
@@ -1750,7 +1854,7 @@ class AmptekMCA():
         self.logger.info(f"[Amptek MCA] Default configuration '{config_name}' for '{device_type}' retrieved.")
         return specific_config
 
-    def apply_default_configuration(self, device_type: str, config_name: str) -> None:
+    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash = False) -> None:
         """
         Applies a specific default configuration to the device.
 
@@ -1761,6 +1865,8 @@ class AmptekMCA():
         Args:
             device_type: The name of the device type (e.g., "DP5", "PX5").
             config_name: The name of the configuration file (e.g., "standard").
+            save_to_flash: If True, the configuration will be saved to flash.
+                            If False, it will not be saved (default: False).
 
         Raises:
             AmptekMCAError: If connection or communication fails, if the default
@@ -1782,12 +1888,11 @@ class AmptekMCA():
         # Use pop with default None. Assumes keys are uppercase from get_default_configuration
         target_hv_value = config_to_apply.pop('HVSE', None)
 
-        # 3. Send the rest of the configuration (always save this part)
+        # 3. Send the rest of the configuration
         if config_to_apply: # Check if there are other parameters left
             self.logger.info(f"[Amptek MCA] Sending main configuration parameters ({len(config_to_apply)} items)...")
             try:
-                # Use save_to_flash=True for the main config part
-                self.send_configuration(config_to_apply, save_to_flash=False) # Do not save in flash, avoid memory degradation
+                self.send_configuration(config_to_apply, save_to_flash=save_to_flash) # Do not save in flash, avoid memory degradation
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                 self.logger.error(f"[Amptek MCA] Error sending main configuration part: {e}")
                 raise # Re-raise the exception
@@ -1809,8 +1914,8 @@ class AmptekMCA():
                     except (ValueError, TypeError):
                          raise ValueError(f"Invalid HVSE value found in configuration: '{target_hv_value}'")
 
-                # Call the ramping method, dont save in flash, avoid memory degradation
-                self.set_HVSE(hv_to_set, save_to_flash=False) # Uses default step/delay
+                # Call the ramping method
+                self.set_HVSE(hv_to_set, save_to_flash=save_to_flash) # Uses default step/delay
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                  self.logger.error(f"[Amptek MCA] Error applying HVSE setting '{target_hv_value}': {e}")
                  raise # Re-raise the exception
@@ -1838,4 +1943,4 @@ class AmptekMCA():
 # Example Usage
 if __name__ == "__main__":
     amptek_mca = AmptekMCA()
-    amptek_mca.connect()
+    print(amptek_mca.get_default_configuration("PX5", "CdTe Default PX5"))
