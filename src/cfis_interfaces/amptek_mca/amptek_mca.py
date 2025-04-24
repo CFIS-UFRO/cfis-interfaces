@@ -1750,6 +1750,10 @@ class AmptekMCA():
                                 # Remove unsupported parameters
                                 if verbose: self.logger.info(f"[Amptek MCA] Removing unsupported parameters from config '{config_name}' for device '{device_type}'...")
                                 parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type, verbose=verbose)}
+                                # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
+                                if 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
+                                    if verbose: self.logger.warning(f"[Amptek MCA] Fixing RTDS value in config '{config_name}' for device '{device_type}' from 0 to 2.")
+                                    parsed_config['RTDS'] = '2'
                                 # Save
                                 device_configs[config_name] = parsed_config
                             else:
