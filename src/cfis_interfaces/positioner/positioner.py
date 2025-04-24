@@ -2,8 +2,10 @@
 import time
 import threading
 from typing import Callable, Optional
+import logging
 # Third-party imports
 import serial
+# CFIS libraries
 from cfis_utils import LoggerUtils, TimeUtils
 
 
@@ -31,9 +33,12 @@ class Positioner:
     """
     def __init__(self,
                 port: str,
-                baudrate: int = 115200,
+                baudrate: int = 9600,
                 default_wait_time: float = DEFAULT_WAIT_TIME_S,
                 on_data_callback: Optional[Callable[[str], None]] = None,
+                logger: Optional[logging.Logger] = None,
+                logger_name: str = "Positioner",
+                logger_level: int = logging.INFO
             ):
         """
         Initializes the connection parameters for the G-code controller.
@@ -47,6 +52,10 @@ class Positioner:
             on_data_callback (Optional[Callable[[str], None]]): An optional function
                                        to call when data is received from the serial port.
                                        It should accept a single string argument. Defaults to None.
+            logger (Optional[logging.Logger]): An optional logger instance. If None,
+                                       a new logger will be created with the provided name and level.
+            logger_name (str): The name of the new logger. Defaults to "Positioner".
+            logger_level (int): The logging level for the new logger. Defaults to logging.INFO.
         """
         self.port = port
         self.baudrate = baudrate
@@ -56,9 +65,9 @@ class Positioner:
         self.is_connected = False
         self._reader_thread = None
         self._reading_active = False
-        self.logger = LoggerUtils.get_logger()
+        self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
         self.logger.info(f"[POSITIONER] Initializing Positioner on port {self.port} at {self.baudrate} baud.")
-        self.logger.info(f"[POSITIONER] Default wait time set to: {TimeUtils.format_time(self.default_wait_time)}")
+        self.logger.debug(f"[POSITIONER] Default wait time set to: {TimeUtils.format_time(self.default_wait_time)}")
 
     def _background_reader(self):
         """
@@ -74,7 +83,7 @@ class Positioner:
                     if self.connection.in_waiting > 0:
                         line = self.connection.readline().decode('utf-8', errors='ignore').strip()
                         if line:
-                            self.logger.info(f"[POSITIONER] Received from controller: {line}")
+                            self.logger.debug(f"[POSITIONER] Received from controller: {line}")
                             if self.on_data_callback:
                                 self.on_data_callback(line)
                     else:
@@ -190,7 +199,7 @@ class Positioner:
             return False
 
         clean_command = command.strip()
-        self.logger.info(f"[POSITIONER] Sending G-code: {clean_command}")
+        self.logger.debug(f"[POSITIONER] Sending G-code: {clean_command}")
 
         try:
             # Ensure command ends with a newline and encode it
@@ -335,3 +344,7 @@ class Positioner:
         self._wait_approximate(wait_time)
 
         return True
+    
+if __name__ == "__main__":
+    # Example usage
+    positioner = Positioner(port="/dev/ttyUSB0")
