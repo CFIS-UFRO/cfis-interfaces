@@ -1187,8 +1187,9 @@ class AmptekMCA():
             self.logger.error(f"[Amptek MCA] Failed to decode echoed bytes using {encoding}: {e}")
             raise AmptekMCAError(f"Failed to decode echoed response using {encoding}: {e}")
 
-    def get_parameter_info(self,
+    def get_parameters_info(self,
                            param_names: Union[str, List[str]],
+                           required_params: Optional[Dict[str, Any]] = None
                            ) -> Dict[str, Dict[str, Any]]:
         """
         Retrieves metadata for specified configuration parameters.
@@ -1196,8 +1197,10 @@ class AmptekMCA():
         Args:
             param_names: A single parameter name (string) or a list of parameter
                          names (e.g., "GAIN", ["TPEA", "MCAC", "VOLU"]). Case-insensitive.
-            device_id_str: (Optional) The device ID string (e.g., "PX5", "DP5G").
-                           If None, get_status() will be called to determine it.
+            required_params: Some parameters require additional parameters to be set, such as
+                            "MCSL" and "MCSH" which depend on the current MCAC value.
+                            Use this argument to specify any required parameter values.
+                            If not provided, the required parameters will be fetched from the device.
 
         Returns:
             A dictionary where keys are the requested parameter names (uppercase)
@@ -1228,7 +1231,8 @@ class AmptekMCA():
             param_names_list = [name.upper() for name in param_names]
 
         # 3. Fetch MCAC value *if* MCSL or MCSH range calculation is needed
-        if 'MCSL' in param_names_list or 'MCSH' in param_names_list:
+        mcac_val_str = required_params.get('MCAC', None) if required_params else None
+        if not mcac_val_str and ('MCSL' in param_names_list or 'MCSH' in param_names_list):
             self.logger.debug("[Amptek MCA] MCSL/MCSH requested, fetching current MCAC value for range calculation...")
             try:
                 mcac_config = self.read_configuration(['MCAC'])
@@ -1238,6 +1242,8 @@ class AmptekMCA():
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                 self.logger.warning(f"[Amptek MCA] Error reading MCAC value for MCSL/MCSH range: {e}. Range might be inaccurate.")
                 # Proceed without MCAC value, range logic will use default
+        if not mcac_val_str:
+            mcac_val_str = "1024"
 
         # 4. Process each requested parameter using internal logic
         for param_name in param_names_list:
@@ -1306,13 +1312,7 @@ class AmptekMCA():
             elif param_name in ["MCSL", "MCSH"]:
                 info["type"] = "int"
                 info["doc"] = f"Sets {'Low' if param_name == 'MCSL' else 'High'} Threshold for MCS."
-                # Use fetched mcac_val_str if available, otherwise default
-                mcac_val = 1024 # Default if MCAC read failed
-                if mcac_val_str and mcac_val_str.isdigit():
-                    mcac_val = int(mcac_val_str)
-                elif mcac_val_str:
-                     self.logger.warning(f"[Amptek MCA] Using default MCAC={mcac_val} for range calculation due to invalid readback value: {mcac_val_str}")
-
+                mcac_val = int(mcac_val_str)
                 max_ch = mcac_val - 1
                 info["range"] = (0, max_ch)
 
@@ -1374,6 +1374,34 @@ class AmptekMCA():
             # --- End Internal Logic ---
 
         return param_info_result
+
+    def get_parameter_info(self,
+                        param_name: str,
+                        required_params: Optional[Dict[str, Any]] = None
+                ) -> Dict[str, Dict[str, Any]]:
+        """
+        Retrieves metadata for the specified parameter.
+
+        Args:
+            param_name: A single parameter name (string)
+                        (e.g., "GAIN", ["TPEA", "MCAC", "VOLU"]). Case-insensitive.
+            required_params: Some parameters require additional parameters to be set, such as
+                            "MCSL" and "MCSH" which depend on the current MCAC value.
+                            Use this argument to specify any required parameter values.
+                            If not provided, the required parameters will be fetched from the device.
+
+        Returns:
+            A dictionary containing metadata for the requested parameter:
+            {
+                "type": str, # Python type name ('str', 'int', 'float', 'bool', 'tuple')
+                "doc": str,  # Description
+                "range": tuple | list | str | None, # Min/Max, list, or descriptive string
+                "allowed_values": list[str] | None, # For string parameters
+                "supported": bool, # Is the parameter supported by this device model?
+                "error": str | None # Error message if info retrieval failed
+            }
+        """
+        return self.get_parameters_info([param_name], required_params)[param_name]
 
     def get_unsupported_devices_per_parameter(self) -> List[str]:
         """
