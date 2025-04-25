@@ -75,32 +75,18 @@ amptek.connect()
 # HVSE is applied ramped until the default value
 print(f"Applying default configuration ...")
 amptek.apply_default_configuration("PX5", "CdTe Default PX5") # Example for PX5
-print("Default configuration applied.")
+
+# --- Basic Configuration Example ---
+print("Setting channels to 2048...")
+amptek.send_configuration("MCAC", 2048)
 
 # --- Basic Acquisition Example ---
-print("Disabling MCA...")  # Usually it will be enabled when applying the default configuration
-amptek.disable_mca()
-
-print("Clearing spectrum...")
-amptek.clear_spectrum()
-
-print("Enabling MCA...")
-amptek.enable_mca()
-
-print("Aquiring spectrum...")
-time.sleep(10) # Short acquisition for example
-
-print("Disabling MCA...")
-amptek.disable_mca()
-
-print("Reading spectrum...")
-spectrum = amptek.get_spectrum()
-print(f"Spectrum received ({len(spectrum)} channels).")
+print("Getting spectrum...")
+spectrum = amptek.acquire_spectrum(preset_real_time = 10)
 
 # --- Safely Ramp Down HV to 0V before disconnecting ---
 print("Setting HV to 0V (ramped)...")
 amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety start on next power on
-print("HV set to 0V.")
 
 # --- Disconnecting ---
 print("Disconnecting...")
