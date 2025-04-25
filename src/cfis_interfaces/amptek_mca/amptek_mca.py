@@ -491,16 +491,19 @@ class AmptekMCA():
 
     # --- Public Command Methods ---
 
-    def get_status_bytes(self) -> bytes:
+    def get_status_bytes(self, silent: bool = False) -> bytes:
         """
         Requests and returns the 64-byte status data from the device.
+        args:
+            silent (bool): If True, all the .info messages are replaced with .debug.
         Returns:
             The 64-byte status data payload.
         Raises:
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        self.logger.info("[Amptek MCA] Requesting status...")
+        silent_log = self.logger.debug if silent else self.logger.info
+        silent_log("[Amptek MCA] Requesting status...")
         self._send_request(REQ_STATUS[0], REQ_STATUS[1])
         pid1, pid2, data = self._read_response()
 
@@ -515,14 +518,17 @@ class AmptekMCA():
         if data is None or len(data) != 64:
              raise AmptekMCAError(f"Invalid status data received: Length={len(data) if data else 'None'}")
 
-        self.logger.info("[Amptek MCA] Status received successfully.")
+        silent_log("[Amptek MCA] Status received successfully.")
         return data
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self, silent: bool = False) -> Dict[str, Any]:
         """
         Requests the standard status packet and parses it into a dictionary.
 
         It calls get_status_bytes internally and then interprets the fields.
+
+        Args:
+            silent (bool): If True, all the .info messages are replaced with .debug.
 
         Returns:
             A dictionary containing the parsed status information.
@@ -532,7 +538,7 @@ class AmptekMCA():
                             received data cannot be parsed correctly.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        status_bytes = self.get_status_bytes()
+        status_bytes = self.get_status_bytes(silent=silent)
         self.logger.debug(f"[Amptek MCA] Parsing status bytes...")
         status_dict: Dict[str, Any] = {}
 
