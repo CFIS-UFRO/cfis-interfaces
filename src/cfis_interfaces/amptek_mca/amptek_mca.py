@@ -1994,6 +1994,141 @@ class AmptekMCA():
                 self.logger.warning("[Amptek MCA] Wait interrupted by user.")
                 raise # Allow interruption to propagate
 
+    def configure_acquisition(self,
+                              channels: Optional[int] = None,
+                              preset_acq_time: Optional[Union[float, str]] = None,
+                              preset_real_time: Optional[Union[float, str]] = None,
+                              preset_counts: Optional[Union[int, str]] = None,
+                              preset_live_time: Optional[Union[float, str]] = None,
+                              gain: Optional[float] = None,
+                              save_to_flash: bool = False) -> None:
+        """
+        Configures specified acquisition parameters.
+
+        Retrieves parameter metadata using get_parameters_info to validate inputs
+        against supported ranges or allowed values before sending commands.
+        Only the parameters for which a value (not None) is provided AND passes
+        validation will be sent to the device.
+
+        Args:
+            channels: Number of MCA channels (e.g., 256, 8192). Default: None.
+            preset_acq_time: Preset acq time (s) or "OFF". Default: None.
+            preset_real_time: Preset real time (s) or "OFF". Default: None.
+            preset_counts: Preset counts or "OFF". Default: None.
+            preset_live_time: Preset live time (s) or "OFF" (MCA8000D only). Default: None.
+            gain: Total Gain (analog * fine). Default: None.
+            save_to_flash: If True, save config to flash memory. Default: False.
+
+        Raises:
+            AmptekMCAError: If connection or communication fails (e.g., during validation).
+            AmptekMCAAckError: If the device returns an error ACK (e.g., during validation).
+            ValueError: If any provided parameter value is invalid (wrong type,
+                        out of range, not in allowed values) after validation.
+        """
+        config_dict: OrderedDictType[str, Any] = OrderedDict()
+        params_to_validate: Dict[str, Any] = {}
+
+        # Collect provided parameters for validation
+        if channels is not None: params_to_validate['MCAC'] = channels
+        if preset_acq_time is not None: params_to_validate['PRET'] = preset_acq_time
+        if preset_real_time is not None: params_to_validate['PRER'] = preset_real_time
+        if preset_counts is not None: params_to_validate['PREC'] = preset_counts
+        if preset_live_time is not None: params_to_validate['PREL'] = preset_live_time
+        if gain is not None: params_to_validate['GAIN'] = gain
+
+        if not params_to_validate:
+            self.logger.info("[Amptek MCA] No acquisition parameters provided to configure.")
+            return
+
+        self.logger.info(f"[Amptek MCA] Validating and configuring acquisition parameters: {params_to_validate} (save={save_to_flash})")
+
+        # --- Get parameter metadata for validation ---
+        try:
+            # Fetch info only for parameters actually provided
+            param_info = self.get_parameters_info(list(params_to_validate.keys()))
+        except (AmptekMCAError, AmptekMCAAckError) as e:
+             self.logger.error(f"[Amptek MCA] Failed to get parameter info for validation: {e}")
+             raise AmptekMCAError(f"Failed to get parameter info for validation: {e}")
+
+
+        # --- Helper functions for formatting ---
+        def format_preset_time_or_counts(value: Union[float, int, str], command: str) -> str:
+            if isinstance(value, str) and value.upper() == 'OFF': return "OFF"
+            if isinstance(value, (int, float)):
+                if command == 'PREC': return str(int(value))
+                if command == 'PRET': return f"{value:.1f}"
+                if value < 1000000: return f"{value:.3f}" # PRER, PREL
+                else: return f"{value:.1f}"
+            # Should not be reached if validation works
+            raise ValueError(f"Invalid type for {command} post-validation: {type(value)}")
+
+        def format_float(value: float, precision: int = 3) -> str:
+            return f"{value:.{precision}f}"
+
+        # --- Validate and build config_dict ---
+        for command, value in params_to_validate.items():
+            info = param_info.get(command)
+            if not info:
+                # Should not happen if get_parameters_info worked
+                raise AmptekMCAError(f"Failed to retrieve validation info for {command}")
+            if info.get("error"):
+                 # Propagate error from get_parameters_info
+                 raise AmptekMCAError(f"Error retrieving info for {command}: {info['error']}")
+            if not info.get("supported"):
+                 self.logger.warning(f"[Amptek MCA] Parameter {command} is not supported by {self.get_model()}. Skipping.")
+                 continue # Skip unsupported parameters
+
+            # --- Perform Validation ---
+            validated = False
+            # 1. Allowed Values Check (for string/enum types)
+            if info.get("allowed_values"):
+                allowed = [str(v).upper() for v in info["allowed_values"]]
+                val_str = str(value).upper()
+                if val_str in allowed:
+                    validated = True
+
+            # 2. Range Check (for numeric types)
+            if not validated and info.get("range"):
+                num_range = info["range"]
+                try:
+                    # Determine expected type from metadata if possible, default to float
+                    expected_type = float
+                    if "int" in info.get("type"): expected_type = int
+                    if "float" in info.get("type"): expected_type = float
+                    # Attempt conversion and range check
+                    num_value = expected_type(value)
+                    if len(num_range) == 2 and num_range[0] <= num_value <= num_range[1]:
+                        validated = True
+                    else:
+                        raise ValueError(f"Invalid value for {command}: {value}. Must be within range {num_range}.")
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"Invalid type or value for {command}: {value}. Expected type compatible with range {num_range}. Error: {e}")
+
+            # --- Add to config_dict if validated ---
+            if validated:
+                formatted_value = ""
+                if command == 'MCAC': formatted_value = str(value)
+                elif command == 'GAIN': formatted_value = format_float(value, 3)
+                elif command in ['PRET', 'PRER', 'PREC', 'PREL']: formatted_value = format_preset_time_or_counts(value, command)
+                if formatted_value:
+                    # Special check for PREL applicability
+                    if command == 'PREL' and self.get_model() != 'MCA8000D':
+                        self.logger.warning(f"[Amptek MCA] PREL specified ({value}) but device model is '{self.get_model()}'. PREL command will be skipped.")
+                    else:
+                        config_dict[command] = formatted_value
+            else:
+                # If validation failed, log the issue
+                self.logger.warning(f"[Amptek MCA] Validation failed for {command}: {value}. Skipping this parameter.")
+
+        # --- Send configuration ---
+        if not config_dict:
+            self.logger.warning("[Amptek MCA] No valid acquisition parameters provided to configure after validation.")
+            return
+
+        self.logger.info("[Amptek MCA] Validation passed. Sending configuration...")
+        self.send_configuration(config_dict, save_to_flash=save_to_flash)
+        self.logger.info("[Amptek MCA] Acquisition configuration sent.")
+
     # --- Static Methods ---
     @staticmethod
     def install_libusb() -> None:
