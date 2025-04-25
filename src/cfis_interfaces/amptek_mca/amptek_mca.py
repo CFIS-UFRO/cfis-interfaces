@@ -1304,7 +1304,7 @@ class AmptekMCA():
                 if internal_status is None:
                     self.logger.debug(f"[Amptek MCA] Fetching status to determine HV polarity for {param_name} range...")
                     try:
-                        internal_status = self.get_status()
+                        internal_status = self.get_last_status()
                     except (AmptekMCAError, AmptekMCAAckError) as e:
                          self.logger.warning(f"[Amptek MCA] Could not fetch status for HV polarity check: {e}")
                          internal_status = {} # Continue without status info
