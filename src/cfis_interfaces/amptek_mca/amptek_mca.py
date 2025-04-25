@@ -2129,6 +2129,100 @@ class AmptekMCA():
         self.send_configuration(config_dict, save_to_flash=save_to_flash)
         self.logger.info("[Amptek MCA] Acquisition configuration sent.")
 
+    def acquire_spectrum(self,
+                         channels: Optional[int] = None,
+                         preset_acq_time: Optional[Union[float, str]] = None,
+                         preset_real_time: Optional[Union[float, str]] = None,
+                         preset_counts: Optional[Union[int, str]] = None,
+                         preset_live_time: Optional[Union[float, str]] = None,
+                         gain: Optional[float] = None,
+                         save_config_to_flash: bool = False,
+                         time_between_checks: float = 1.0) -> Optional[List[int]]:
+        """
+        Automates the process of acquiring a spectrum with optional configuration.
+
+        Sequence:
+        1. Ensure MCA is closed.
+        2. Clear the previous spectrum.
+        3. Apply specified configuration parameters (if any are provided).
+           If no configuration parameters are provided, the existing device
+           configuration is used for the acquisition.
+        4. Enable the MCA.
+        5. Wait until the acquisition finishes (based on active presets).
+        6. Retrieve the spectrum data.
+
+        Args:
+            channels: Number of MCA channels (e.g., 256, 8192). Default: None (use existing).
+            preset_acq_time: Preset acq time (s) or "OFF". Default: None (use existing).
+            preset_real_time: Preset real time (s) or "OFF". Default: None (use existing).
+            preset_counts: Preset counts or "OFF". Default: None (use existing).
+            preset_live_time: Preset live time (s) or "OFF" (MCA8000D only). Default: None (use existing).
+            gain: Total Gain (analog * fine). Default: None (use existing).
+            save_config_to_flash: If True, save the provided configuration subset
+                                  to flash memory. Default: False.
+            time_between_checks: Interval in seconds for polling MCA status while waiting
+                                   for acquisition to complete. Default: 1.0.
+
+        Returns:
+            A list of integers representing the spectrum counts per channel.
+
+        Raises:
+            AmptekMCAError: If connection or communication fails during any step.
+            AmptekMCAAckError: If the device returns an error ACK during any step.
+            ValueError: If any provided configuration parameter value is invalid.
+        """
+        self.logger.info("[Amptek MCA] Starting automated spectrum acquisition sequence...")
+
+        # Removed the check for all None parameters here
+
+        try:
+            # 1. Ensure MCA is closed first
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Disabling MCA (if enabled)...")
+            self.disable_mca()
+            time.sleep(0.1) # Brief pause after disable command
+
+            # 2. Clear spectrum
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Clearing spectrum...")
+            self.clear_spectrum()
+
+            # 3. Configure parameters (configure_acquisition handles the case where all params are None)
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Applying provided configuration parameters (if any)...")
+            self.configure_acquisition(
+                channels=channels,
+                preset_acq_time=preset_acq_time,
+                preset_real_time=preset_real_time,
+                preset_counts=preset_counts,
+                preset_live_time=preset_live_time,
+                gain=gain,
+                save_to_flash=save_config_to_flash
+            )
+
+            # 4. Open MCA
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Enabling MCA...")
+            self.enable_mca()
+
+            # 5. Wait for MCA to close (based on configured presets)
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Waiting for MCA to close...")
+            self.wait_until_mca_is_closed(time_between_checks=time_between_checks)
+
+            # 6. Get Spectrum
+            self.logger.debug("[Amptek MCA] acquire_spectrum: Getting final spectrum...")
+            spectrum = self.get_spectrum()
+
+            self.logger.info("[Amptek MCA] Automated spectrum acquisition sequence completed successfully.")
+            # 7. Return Spectrum
+            return spectrum
+
+        except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
+            self.logger.error(f"[Amptek MCA] Error during automated acquisition sequence: {e}")
+            # Attempt to disable MCA in case of error during acquisition/wait
+            try:
+                self.logger.warning("[Amptek MCA] Attempting to disable MCA due to error during acquisition.")
+                self.disable_mca()
+            except Exception as disable_e:
+                 self.logger.error(f"[Amptek MCA] Failed to disable MCA after error: {disable_e}")
+            raise # Re-raise the original error
+
     # --- Static Methods ---
     @staticmethod
     def install_libusb() -> None:
