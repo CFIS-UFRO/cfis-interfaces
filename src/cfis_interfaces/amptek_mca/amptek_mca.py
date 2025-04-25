@@ -1941,6 +1941,94 @@ class AmptekMCA():
 
         self.logger.info(f"[Amptek MCA] Default configuration '{config_name}' applied successfully for '{device_type}'.")
 
+    def wait_until_mca_is_closed(self, time_between_checks: float = 1) -> None:
+        """
+        Waits until the MCA is closed.
+
+        Checks relevant preset configurations (PRET, PRER, PREC, PREL) first.
+        If no preset condition is active that would stop the MCA, it logs a
+        warning and returns immediately to prevent an infinite wait.
+        User can interrupt the wait with Ctrl+C.
+
+        Args:
+            time_between_checks: The time interval in seconds between status checks.
+                               Defaults to 1 seconds.
+
+        Raises:
+            AmptekMCAError: If connection or communication fails during status checks
+                            or configuration readback.
+            AmptekMCAAckError: If the device returns an error ACK during checks.
+            ValueError: If time_between_checks is not positive or zero.
+        """
+        if time_between_checks <= 0:
+            raise ValueError("time_between_checks must be positive and non-zero.")
+
+        self.logger.info(f"[Amptek MCA] Waiting for MCA to close (polling every {time_between_checks}s)...")
+
+        # First, check if MCA is already closed
+        try:
+            initial_status = self.get_status(silent=True)
+            if not initial_status['status_flags']['mca_enabled']:
+                self.logger.info("[Amptek MCA] MCA is already closed.")
+                return
+        except (AmptekMCAError, AmptekMCAAckError) as e:
+            self.logger.exception("[Amptek MCA] Failed to get initial MCA status")
+            raise # Re-raise the error
+
+        # Check preset conditions
+        device_model = self.get_model()
+        presets_to_check = ['PRET', 'PRER', 'PREC']
+        if device_model == 'MCA8000D':
+            presets_to_check.append('PREL')
+
+        try:
+            preset_config = self.read_configuration(presets_to_check)
+        except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
+            self.logger.exception("[Amptek MCA] Failed to read preset configuration")
+            raise AmptekMCAError("Failed to read preset configuration before waiting")
+
+        any_preset_active = False
+        for preset_cmd in presets_to_check:
+            value_str = preset_config.get(preset_cmd, 'OFF') # Default to OFF if not found
+            if value_str.upper() != 'OFF':
+                try:
+                    # Try converting to float, check if non-zero
+                    if float(value_str) != 0.0:
+                        any_preset_active = True
+                        break # Found an active preset, no need to check others
+                except ValueError:
+                    # If it's not 'OFF' and not convertible to float (or is non-zero int), consider it active
+                    # This should not happen
+                    self.logger.warning(f"[Amptek MCA] Preset {preset_cmd} has non-numeric value '{value_str}', assuming it's active.")
+                    any_preset_active = True
+                    break
+
+        # If MCA is currently enabled but no presets are active, warn and return
+        if not any_preset_active:
+            self.logger.warning("[Amptek MCA] MCA is enabled, but no active preset condition (PRET/PRER/PREC/PREL) found.")
+            self.logger.warning("[Amptek MCA] wait_until_mca_is_closed() will return immediately to avoid potential infinite loop.")
+            return
+
+        # Start polling loop only if at least one preset is active
+        self.logger.debug("[Amptek MCA] At least one preset condition is active. Starting polling loop...")
+        while True:
+            try:
+                current_status = self.get_status(silent=True)
+                if not current_status['status_flags']['mca_enabled']:
+                    self.logger.info("[Amptek MCA] MCA is now closed.")
+                    break # Exit the loop
+
+                self.logger.debug("[Amptek MCA] MCA still enabled, waiting...")
+                time.sleep(time_between_checks)
+
+            except (AmptekMCAError, AmptekMCAAckError) as e:
+                self.logger.exception("[Amptek MCA] Error polling MCA status during wait")
+                raise # Re-raise the error, interrupting the wait
+
+            except KeyboardInterrupt:
+                self.logger.warning("[Amptek MCA] Wait interrupted by user.")
+                raise # Allow interruption to propagate
+
     # --- Static Methods ---
     @staticmethod
     def install_libusb() -> None:
