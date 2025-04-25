@@ -7,7 +7,7 @@ from collections import OrderedDict
 from pathlib import Path
 import logging
 # CFIS libraries
-from cfis_utils import UsbUtils, LoggerUtils
+from cfis_utils import UsbUtils, LoggerUtils, Spectrum
 # Third-party libraries
 import usb.core
 import usb.util
@@ -706,17 +706,16 @@ class AmptekMCA():
         self.logger.info(f"[Amptek MCA] Spectrum bytes received successfully ({len(data)} bytes).")
         return data
     
-    def get_spectrum(self) -> List[int]:
+    def get_spectrum(self) -> Spectrum:
         """
-        Requests spectrum data and parses it into a list of counts per channel.
+        Requests spectrum data and parses it into a Spectrum object.
 
         Calls get_spectrum_bytes internally and processes the raw byte data.
         Each channel count is represented by 3 bytes (24-bit unsigned integer),
         interpreted as little-endian.
 
         Returns:
-            A list of integers, where each integer represents the counts in a channel,
-            starting from channel 0.
+            A Spectrum object containing the parsed counts.
 
         Raises:
             AmptekMCAError: If connection or communication fails, or if the
@@ -753,7 +752,28 @@ class AmptekMCA():
             self.logger.error(f"[Amptek MCA] Unexpected error parsing spectrum: {e}")
             raise AmptekMCAError(f"Unexpected error parsing spectrum: {e}")
 
-        return spectrum_counts
+        # Get status
+        status = self.get_status(silent=True)
+
+        # Get acquisition parameters
+        parameters_to_read = ["MCAC", "PRET", "PRER", "PREC", "GAIN"]
+        if self.model == "MCA8000D":
+            parameters_to_read.append("PREL")
+        values = self.read_configuration(parameters_to_read)
+
+        # Create metadata dictionary
+        metadata = {
+            "acquisition_parameters": values,
+            "status": status
+        }
+
+        # Create Spectrum object
+        spectrum = Spectrum(logger = self.logger)
+        spectrum.set_raw_counts(spectrum_counts)
+        spectrum.add_metadata(metadata)
+
+        # Return
+        return spectrum
 
     def send_configuration(self, config_dict: Dict[str, Any], save_to_flash: bool = False) -> None:
         """
@@ -2137,7 +2157,7 @@ class AmptekMCA():
                          preset_live_time: Optional[Union[float, str]] = None,
                          gain: Optional[float] = None,
                          save_config_to_flash: bool = False,
-                         time_between_checks: float = 1.0) -> Optional[List[int]]:
+                         time_between_checks: float = 1.0) -> Optional[Spectrum]:
         """
         Automates the process of acquiring a spectrum with optional configuration.
 
