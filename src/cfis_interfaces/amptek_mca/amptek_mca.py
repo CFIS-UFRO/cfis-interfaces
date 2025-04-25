@@ -1189,10 +1189,9 @@ class AmptekMCA():
 
     def get_parameter_info(self,
                            param_names: Union[str, List[str]],
-                           device_id_str: Optional[str] = None
                            ) -> Dict[str, Dict[str, Any]]:
         """
-        Retrieves metadata for specified configuration parameters based on device model.
+        Retrieves metadata for specified configuration parameters.
 
         Args:
             param_names: A single parameter name (string) or a list of parameter
@@ -1219,27 +1218,8 @@ class AmptekMCA():
         internal_status: Optional[Dict[str, Any]] = None # To store status 
         mcac_val_str: Optional[str] = None # To store MCAC value, needed for MCSL/MCSH range
 
-        # 1. Determine Device ID if not provided
-        _device_id_str = device_id_str # Use a local copy
-        if _device_id_str is None:
-            self.logger.debug("[Amptek MCA] Device ID not provided, calling get_status()...")
-            try:
-                internal_status = self.get_last_status() # Get parsed status
-                _device_id_str = internal_status.get('device_id', 'Unknown')
-                if _device_id_str == 'Unknown':
-                     self.logger.warning("[Amptek MCA] Could not determine device ID from status.")
-                     if isinstance(param_names, str): param_names = [param_names]
-                     for name in param_names:
-                         param_info_result[name.upper()] = {"error": "Could not determine device ID."}
-                     return param_info_result
-            except (AmptekMCAError, AmptekMCAAckError) as e:
-                self.logger.error(f"[Amptek MCA] Failed to get status to determine device ID: {e}")
-                if isinstance(param_names, str): param_names = [param_names]
-                for name in param_names:
-                     param_info_result[name.upper()] = {"error": f"Failed to get status: {e}"}
-                return param_info_result
-
-        self.logger.debug(f"[Amptek MCA] Using Device ID: {_device_id_str}")
+        # 1. Determine Device ID
+        device_id_str = self.get_model() # Get model from internal state
 
         # 2. Normalize input parameter names to a list of uppercase strings
         if isinstance(param_names, str):
@@ -1274,11 +1254,11 @@ class AmptekMCA():
             if param_name == "GAIN":
                 info["type"] = "float"
                 info["doc"] = "Sets the total gain (analog * fine)."
-                if _device_id_str == "DP5": info["range"], info["supported"] = (0.75, 150.0), True
-                elif _device_id_str == "PX5": info["range"], info["supported"] = (0.75, 500.0), True
-                elif _device_id_str in ["DP5G", "TB5"]: info["range"], info["supported"] = (1.0, 10.0), True
-                elif _device_id_str == "MCA8000D": info["allowed_values"], info["type"], info["supported"] = [1.0, 10.0], "float", True
-                elif _device_id_str == "DP5-X": info["range"], info["supported"] = (2.67, 150.0), True
+                if device_id_str == "DP5": info["range"], info["supported"] = (0.75, 150.0), True
+                elif device_id_str == "PX5": info["range"], info["supported"] = (0.75, 500.0), True
+                elif device_id_str in ["DP5G", "TB5"]: info["range"], info["supported"] = (1.0, 10.0), True
+                elif device_id_str == "MCA8000D": info["allowed_values"], info["type"], info["supported"] = [1.0, 10.0], "float", True
+                elif device_id_str == "DP5-X": info["range"], info["supported"] = (2.67, 150.0), True
                 else: info["error"] = "Range unknown for this device."
 
             elif param_name == "HVSE":
@@ -1298,19 +1278,19 @@ class AmptekMCA():
 
                 is_positive = internal_status.get('status_flags', {}).get('hv_polarity_positive')
 
-                if _device_id_str in ["DP5", "TB5"]:
+                if device_id_str in ["DP5", "TB5"]:
                     if is_positive is True: hv_range = (0.0, 1500.0)
                     elif is_positive is False: hv_range = (-1500.0, 0.0)
                     else: info["error"] = "Could not determine PC5 polarity from status."
 
-                elif _device_id_str == "PX5":
+                elif device_id_str == "PX5":
                     is_hpge = internal_status.get('px5_options_42', {}).get('option_code') == 1
                     max_v = 5000.0 if is_hpge else 1500.0
                     if is_positive is True: hv_range = (0.0, max_v)
                     elif is_positive is False: hv_range = (-max_v, 0.0)
                     else: info["error"] = "Could not determine PX5 HV polarity from status."
 
-                elif _device_id_str == "DP5-X":
+                elif device_id_str == "DP5-X":
                     max_v = 300.0
                     if is_positive is True: hv_range = (0.0, max_v)
                     elif is_positive is False: hv_range = (-max_v, 0.0)
@@ -1344,8 +1324,8 @@ class AmptekMCA():
             elif param_name == "PAPS":
                  info["type"] = "(str, float)"
                  info["doc"] = "Controls Preamp Power Supplies."
-                 if _device_id_str == "DP5": info["allowed_values"] = ["8.5", "5", "OFF", "ON"]
-                 elif _device_id_str == "PX5": info["allowed_values"] = ["8.5", "5", "OFF"]
+                 if device_id_str == "DP5": info["allowed_values"] = ["8.5", "5", "OFF", "ON"]
+                 elif device_id_str == "PX5": info["allowed_values"] = ["8.5", "5", "OFF"]
 
             elif param_name == "PREC":
                  info["type"] = "(int, str)"
@@ -1380,7 +1360,7 @@ class AmptekMCA():
                 info["error"] = "Parameter metadata logic not fully implemented in get_parameter_info."
 
             # Support
-            info["supported"] = self.parameter_is_supported(param_name, _device_id_str)
+            info["supported"] = self.parameter_is_supported(param_name, device_id_str)
             if not info["supported"]:
                 info["range"] = None
                 info["allowed_values"] = None
