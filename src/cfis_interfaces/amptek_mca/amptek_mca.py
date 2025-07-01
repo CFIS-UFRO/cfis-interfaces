@@ -2245,18 +2245,24 @@ class AmptekMCA():
 
     # --- Static Methods ---
     @staticmethod
-    def install_libusb() -> None:
+    def install_libusb(logger: Optional[logging.Logger] = None) -> None:
         """
         Install the libusb backend for pyusb.
+
+        args:
+            logger (logging.Logger, optional): Logger instance to use. If None, a new logger is created.
         """
-        UsbUtils.install_libusb() # Assumes this function exists and works
+        UsbUtils.install_libusb() 
 
     @staticmethod
-    def add_udev_rule() -> None:
+    def add_udev_rule(logger: Optional[logging.Logger] = None) -> None:
         """
         Add udev rules for the Amptek MCA device.
+
+        args:
+            logger (logging.Logger, optional): Logger instance to use. If None, a new logger is created.
         """
-        UsbUtils.add_udev_rule(AmptekMCA.VENDOR_ID_STR, AmptekMCA.PRODUCT_ID_STR) # Assumes this exists
+        UsbUtils.add_udev_rule(AmptekMCA.VENDOR_ID_STR, AmptekMCA.PRODUCT_ID_STR, logger=logger)
 
 
 # Example Usage
