@@ -24,6 +24,9 @@ READER_THREAD_SLEEP_S = 0.1
 # Timeout for joining the reader thread
 READER_THREAD_JOIN_TIMEOUT_S = 0.5
 
+# Logging prefix constant
+LOG_PREFIX = "[POSITIONER]"
+
 class Positioner:
     """
     Handles communication and control of a G-code based positioning system.
@@ -66,44 +69,44 @@ class Positioner:
         self._reader_thread = None
         self._reading_active = False
         self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
-        self.logger.info(f"[POSITIONER] Positioner class initialized on port {self.port} at {self.baudrate} baud.")
-        self.logger.debug(f"[POSITIONER] Default wait time set to: {TimeUtils.format_time(self.default_wait_time)}")
+        self.logger.info(f"{LOG_PREFIX} Positioner class initialized on port {self.port} at {self.baudrate} baud.")
+        self.logger.debug(f"{LOG_PREFIX} Default wait time set to: {TimeUtils.format_time(self.default_wait_time)}")
 
     def _background_reader(self):
         """
         Internal method to run in a thread to read controller output.
         """
-        self.logger.info("[POSITIONER] Background reader thread started.")
+        self.logger.info(f"{LOG_PREFIX} Background reader thread started.")
         try:
             while self._reading_active:
                 if not (self.connection and self.connection.is_open):
-                    self.logger.warning("[POSITIONER] Connection lost or closed. Stopping reader.")
+                    self.logger.warning(f"{LOG_PREFIX} Connection lost or closed. Stopping reader.")
                     break
                 try:
                     if self.connection.in_waiting > 0:
                         line = self.connection.readline().decode('utf-8', errors='ignore').strip()
                         if line:
-                            self.logger.debug(f"[POSITIONER] Received from controller: {line}")
+                            self.logger.debug(f"{LOG_PREFIX} Received from controller: {line}")
                             if self.on_data_callback:
                                 self.on_data_callback(line)
                     else:
                         time.sleep(READER_THREAD_SLEEP_S)
                 except serial.SerialException as e:
-                    self.logger.exception(f"[POSITIONER] Serial error in background reader: {e}. Stopping reader.")
+                    self.logger.exception(f"{LOG_PREFIX} Serial error in background reader: {e}. Stopping reader.")
                     self._reading_active = False # Signal thread to stop on serial error
                     self.is_connected = False # Assume connection is lost
                     break
                 except Exception as e:
                     # Catch unexpected errors within the loop
-                    self.logger.exception(f"[POSITIONER] Unexpected error in background reader loop: {e}")
+                    self.logger.exception(f"{LOG_PREFIX} Unexpected error in background reader loop: {e}")
                     time.sleep(READER_THREAD_SLEEP_S) # Wait briefly before retrying
 
         except Exception as e:
              # Catch errors occurring outside the main loop (e.g., during initial checks)
-             self.logger.exception(f"[POSITIONER] Fatal error in background reader thread: {e}")
+             self.logger.exception(f"{LOG_PREFIX} Fatal error in background reader thread: {e}")
         finally:
             self._reading_active = False # Ensure flag is false on exit
-            self.logger.info("[POSITIONER] Background reader thread finished.")
+            self.logger.info(f"{LOG_PREFIX} Background reader thread finished.")
 
 
     def connect(self) -> bool:
@@ -117,10 +120,10 @@ class Positioner:
             PositionerError: If serial connection fails or initial command send fails.
         """
         if self.is_connected:
-            self.logger.warning("[POSITIONER] Positioner already connected.")
+            self.logger.warning(f"{LOG_PREFIX} Positioner already connected.")
             return True
 
-        self.logger.info(f"[POSITIONER] Attempting to connect to {self.port}...")
+        self.logger.info(f"{LOG_PREFIX} Attempting to connect to {self.port}...")
         try:
             self.connection = serial.Serial(
                 port=self.port,
@@ -132,7 +135,7 @@ class Positioner:
             self.connection.flushInput()
             self.connection.flushOutput()
             self.is_connected = True
-            self.logger.info("[POSITIONER] Serial port opened successfully.")
+            self.logger.info(f"{LOG_PREFIX} Serial port opened successfully.")
 
             # Start background reader
             self._reading_active = True
@@ -148,14 +151,14 @@ class Positioner:
             
             # Small delay to allow command processing before potential next commands
             time.sleep(SHORT_WAIT)
-            self.logger.info("[POSITIONER] Positioner connected and initialized (G21: units=mm).")
+            self.logger.info(f"{LOG_PREFIX} Positioner connected and initialized (G21: units=mm).")
             return True
 
         except serial.SerialException as e:
-            self.logger.exception(f"[POSITIONER] Serial connection error: {e}")
+            self.logger.exception(f"{LOG_PREFIX} Serial connection error: {e}")
             self._cleanup_connection()
         except Exception as e:
-            self.logger.exception(f"[POSITIONER] Unexpected error during connection: {e}")
+            self.logger.exception(f"{LOG_PREFIX} Unexpected error during connection: {e}")
             self._cleanup_connection()
         return False
 
@@ -170,7 +173,7 @@ class Positioner:
             try:
                 self.connection.close()
             except Exception as e:
-                self.logger.exception(f"[POSITIONER] Error closing serial port during cleanup: {e}")
+                self.logger.exception(f"{LOG_PREFIX} Error closing serial port during cleanup: {e}")
         self.connection = None
         self.is_connected = False
 
@@ -179,9 +182,9 @@ class Positioner:
         """
         Stops the background reader thread and closes the serial connection.
         """
-        self.logger.info("[POSITIONER] Disconnecting Positioner...")
+        self.logger.info(f"{LOG_PREFIX} Disconnecting Positioner...")
         self._cleanup_connection()
-        self.logger.info("[POSITIONER] Positioner disconnected.")
+        self.logger.info(f"{LOG_PREFIX} Positioner disconnected.")
 
 
     def send_command(self, command: str) -> bool:
@@ -195,11 +198,11 @@ class Positioner:
             bool: True if the command was sent successfully, False otherwise.
         """
         if not self.is_connected or not self.connection:
-            self.logger.error("[POSITIONER] Cannot send command: Positioner not connected.")
+            self.logger.error(f"{LOG_PREFIX} Cannot send command: Positioner not connected.")
             return False
 
         clean_command = command.strip()
-        self.logger.debug(f"[POSITIONER] Sending G-code: {clean_command}")
+        self.logger.debug(f"{LOG_PREFIX} Sending G-code: {clean_command}")
 
         try:
             # Ensure command ends with a newline and encode it
@@ -209,12 +212,12 @@ class Positioner:
             return True
 
         except serial.SerialException as e:
-            self.logger.error(f"[POSITIONER] Serial communication error sending '{clean_command}': {e}")
+            self.logger.error(f"{LOG_PREFIX} Serial communication error sending '{clean_command}': {e}")
             # Assume connection is lost
             self._cleanup_connection()
             return False
         except Exception as e:
-            self.logger.error(f"[POSITIONER] Unexpected error sending '{clean_command}': {e}")
+            self.logger.error(f"{LOG_PREFIX} Unexpected error sending '{clean_command}': {e}")
             return False
 
     def _wait_approximate(self, duration: float):
@@ -227,19 +230,19 @@ class Positioner:
         """
         if duration <= 0:
             return
-        self.logger.info(f"[POSITIONER] Waiting {TimeUtils.format_time(duration)}")
+        self.logger.info(f"{LOG_PREFIX} Waiting {TimeUtils.format_time(duration)}")
         time.sleep(duration)
 
 
     def _send_move_command(self, mode_command: str, move_command: str, wait_duration: float):
         """Internal helper to send mode, move command and wait."""
         if not self.is_connected or not self.connection:
-             self.logger.error(f"[POSITIONER] Cannot move: Positioner not connected.")
+             self.logger.error(f"{LOG_PREFIX} Cannot move: Positioner not connected.")
              return False
 
         # Set positioning mode (Absolute G90 or Relative G91)
         if not self.send_command(mode_command):
-             self.logger.error(f"[POSITIONER] Failed to send mode command ({mode_command}) before move.")
+             self.logger.error(f"{LOG_PREFIX} Failed to send mode command ({mode_command}) before move.")
              return False
 
         # Send the actual move command
@@ -269,7 +272,7 @@ class Positioner:
         command_prefix = f"G1 F{speed:.2f}" if speed else "G0"
         move_cmd = f"{command_prefix} X{x:.4f} Y{y:.4f} Z{z:.4f}"
         wait_time = wait_time if wait_time is not None else self.default_wait_time
-        self.logger.info(f"[POSITIONER] Absolute movement to X={x} Y={y} Z={z} (mm) with speed {speed} (mm/min) using G90...")
+        self.logger.info(f"{LOG_PREFIX} Absolute movement to X={x} Y={y} Z={z} (mm) with speed {speed} (mm/min) using G90...")
         return self._send_move_command("G90", move_cmd, wait_time)
 
 
@@ -290,7 +293,7 @@ class Positioner:
         command_prefix = f"G1 F{speed:.2f}" if speed else "G0"
         move_cmd = f"{command_prefix} X{dx:.4f} Y{dy:.4f} Z{dz:.4f}"
         wait_time = wait_time if wait_time is not None else self.default_wait_time
-        self.logger.info(f"[POSITIONER] Relative movement to X={dx} Y={dy} Z={dz} (mm) with speed {speed} (mm/min) using G91...")
+        self.logger.info(f"{LOG_PREFIX} Relative movement to X={dx} Y={dy} Z={dz} (mm) with speed {speed} (mm/min) using G91...")
         return self._send_move_command("G91", move_cmd, wait_time)
 
 
@@ -307,16 +310,16 @@ class Positioner:
             bool: True if commands were sent successfully, False otherwise.
         """
         if not self.is_connected or not self.connection:
-             self.logger.error("[POSITIONER] Cannot set home: Positioner not connected.")
+             self.logger.error(f"{LOG_PREFIX} Cannot set home: Positioner not connected.")
              return False
 
         # G92 usually works in the current mode, but setting G90 explicitly is safer
         if not self.send_command("G90"):
-             self.logger.error("[POSITIONER] Failed to send absolute mode command (G90) before set_home.")
+             self.logger.error(f"{LOG_PREFIX} Failed to send absolute mode command (G90) before set_home.")
              return False
 
         command = f"G92 X{x:.4f} Y{y:.4f} Z{z:.4f}"
-        self.logger.info(f"[POSITIONER] Setting current position to X={x} Y={y} Z={z} (mm) using G92...")
+        self.logger.info(f"{LOG_PREFIX} Setting current position to X={x} Y={y} Z={z} (mm) using G92...")
         sent = self.send_command(command)
         self._wait_approximate(SHORT_WAIT, "G92 set position")
         return sent
@@ -333,10 +336,10 @@ class Positioner:
             bool: True if G28 command was sent, False otherwise. Completion not guaranteed.
         """
         if not self.is_connected or not self.connection:
-             self.logger.error("[POSITIONER] Cannot go home: Positioner not connected.")
+             self.logger.error(f"{LOG_PREFIX} Cannot go home: Positioner not connected.")
              return False
 
-        self.logger.info("[POSITIONER] Starting homing sequence (G28)...")
+        self.logger.info(f"{LOG_PREFIX} Starting homing sequence (G28)...")
         if not self.send_command("G28"):
             return False
 
