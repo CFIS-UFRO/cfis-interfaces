@@ -2197,8 +2197,6 @@ class AmptekMCA():
         """
         self.logger.info("[Amptek MCA] Starting automated spectrum acquisition sequence...")
 
-        # Removed the check for all None parameters here
-
         try:
             # 1. Ensure MCA is closed first
             self.logger.debug("[Amptek MCA] acquire_spectrum: Disabling MCA (if enabled)...")
