@@ -2254,7 +2254,7 @@ class AmptekMCA():
         args:
             logger (logging.Logger, optional): Logger instance to use. If None, a new logger is created.
         """
-        UsbUtils.install_libusb() 
+        UsbUtils.install_libusb(logger=logger) 
 
     @staticmethod
     def add_udev_rule(logger: Optional[logging.Logger] = None) -> None:
