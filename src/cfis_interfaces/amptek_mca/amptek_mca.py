@@ -1856,7 +1856,7 @@ class AmptekMCA():
         self.logger.info(f"[Amptek MCA] Default configuration '{config_name}' for '{device_type}' retrieved.")
         return specific_config
 
-    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash = False) -> None:
+    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash = False, skip_hvse = False) -> None:
         """
         Applies a specific default configuration to the device.
 
@@ -1869,6 +1869,8 @@ class AmptekMCA():
             config_name: The name of the configuration file (e.g., "standard").
             save_to_flash: If True, the configuration will be saved to flash.
                             If False, it will not be saved (default: False).
+            skip_hvse: If True, the HVSE parameter will be skipped and not applied
+                       (default: False).
 
         Raises:
             AmptekMCAError: If connection or communication fails, if the default
@@ -1901,8 +1903,8 @@ class AmptekMCA():
         else:
             self.logger.info("[Amptek MCA] No main configuration parameters to send (only HVSE was present or config empty).")
 
-        # 4. Apply HVSE using the ramping method (if it was present)
-        if target_hv_value is not None:
+        # 4. Apply HVSE using the ramping method (if it was present and not skipped)
+        if target_hv_value is not None and not skip_hvse:
             self.logger.info(f"[Amptek MCA] Applying HVSE setting separately: {target_hv_value}")
             try:
                 # Convert potential numeric strings back if needed, though get_default should type them
@@ -1921,6 +1923,8 @@ class AmptekMCA():
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                  self.logger.error(f"[Amptek MCA] Error applying HVSE setting '{target_hv_value}': {e}")
                  raise # Re-raise the exception
+        elif target_hv_value is not None and skip_hvse:
+             self.logger.info(f"[Amptek MCA] HVSE parameter found in configuration ({target_hv_value}) but skipped due to skip_hvse=True.")
         else:
              self.logger.info("[Amptek MCA] No HVSE parameter found in the configuration to apply separately.")
 
