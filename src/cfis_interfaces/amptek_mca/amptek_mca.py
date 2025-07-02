@@ -1649,6 +1649,131 @@ class AmptekMCA():
         else:
              self.logger.info(f"{LOG_PREFIX} HV already at target voltage.")
 
+    def _parse_configuration_file(self, config_file_path: Path, device_type: Optional[str] = None) -> OrderedDictType[str, str]:
+        """
+        Internal helper method to parse a configuration file.
+        
+        Args:
+            config_file_path: Path to the configuration file
+            device_type: Optional device type for parameter validation
+            
+        Returns:
+            OrderedDict containing the parsed key-value pairs
+            
+        Raises:
+            FileNotFoundError: If the configuration file doesn't exist
+            IOError: If there's an error reading the file
+            ValueError: If the file contains invalid configuration data
+        """
+        parsed_config = OrderedDict()
+        
+        try:
+            with config_file_path.open('r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    # Skip empty lines or section headers like [Header]
+                    if not line or (line.startswith('[') and line.endswith(']')):
+                        continue
+
+                    # Process potentially multiple commands on one line
+                    parts = line.split(';')
+                    for part in parts:
+                        part = part.strip()
+                        if not part: # Skip empty parts
+                            continue
+
+                        # Split only on the first '=', allow '=' in value
+                        key_value = part.split('=', 1)
+                        if len(key_value) == 2:
+                            key = key_value[0].strip().upper() # Use uppercase keys
+                            value = key_value[1].strip() # Get value
+                            if key and value: # Ensure key and value are not empty
+                                parsed_config[key] = value
+                            elif not key:
+                                self.logger.debug(f"{LOG_PREFIX} Skipping empty key in part '{part}' in file {config_file_path.name}, line {line_num}")
+                            elif not value:
+                                self.logger.debug(f"{LOG_PREFIX} Skipping empty value in part '{part}' in file {config_file_path.name}, line {line_num}")
+                        else:
+                            # Handle parts without '=' if necessary
+                            self.logger.warning(f"{LOG_PREFIX} Skipping malformed part '{part}' (no '=') in file {config_file_path.name}, line {line_num}")
+
+            if parsed_config and device_type:
+                # Remove unsupported parameters
+                self.logger.debug(f"{LOG_PREFIX} Removing unsupported parameters from config file '{config_file_path.name}' for device '{device_type}'...")
+                parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type)}
+                # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
+                if 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
+                    self.logger.debug(f"{LOG_PREFIX} Fixing RTDS value in config file '{config_file_path.name}' for device '{device_type}' from 0 to 2.")
+                    parsed_config['RTDS'] = '2'
+                    
+        except IOError as e:
+            self.logger.error(f"{LOG_PREFIX} Error reading config file {config_file_path}: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"{LOG_PREFIX} Error parsing config file {config_file_path}: {e}")
+            raise ValueError(f"Error parsing configuration file {config_file_path}: {e}")
+            
+        return parsed_config
+
+    def _apply_configuration_dict(self, config_dict: OrderedDictType[str, Any], source_description: str, save_to_flash: bool = False, skip_hvse: bool = False) -> None:
+        """
+        Internal helper method to apply a configuration dictionary to the device.
+        
+        Args:
+            config_dict: The configuration dictionary to apply
+            source_description: Description of the configuration source for logging
+            save_to_flash: If True, the configuration will be saved to flash
+            skip_hvse: If True, the HVSE parameter will be skipped
+            
+        Raises:
+            AmptekMCAError: If connection or communication fails during command execution
+            AmptekMCAAckError: If the device returns an error ACK
+            ValueError: If configuration values are invalid
+        """
+        # Make a copy to avoid modifying the original
+        config_to_apply = config_dict.copy()
+        
+        # 1. Separate HVSE command if present
+        target_hv_value = config_to_apply.pop('HVSE', None)
+
+        # 2. Send the rest of the configuration
+        if config_to_apply: # Check if there are other parameters left
+            self.logger.info(f"{LOG_PREFIX} Sending main configuration parameters ({len(config_to_apply)} items)...")
+            try:
+                self.send_configuration(config_to_apply, save_to_flash=save_to_flash)
+            except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
+                self.logger.error(f"{LOG_PREFIX} Error sending main configuration part: {e}")
+                raise # Re-raise the exception
+        else:
+            self.logger.info(f"{LOG_PREFIX} No main configuration parameters to send (only HVSE was present or config empty).")
+
+        # 3. Apply HVSE using the ramping method (if it was present and not skipped)
+        if target_hv_value is not None and not skip_hvse:
+            self.logger.info(f"{LOG_PREFIX} Applying HVSE setting separately: {target_hv_value}")
+            try:
+                # Convert potential numeric strings back if needed
+                hv_to_set: Union[float, int, str]
+                if isinstance(target_hv_value, str) and target_hv_value.upper() == 'OFF':
+                    hv_to_set = 'OFF'
+                else:
+                    # Attempt conversion to float, handle potential errors if value wasn't typed correctly
+                    try:
+                        hv_to_set = float(target_hv_value)
+                    except (ValueError, TypeError):
+                         raise ValueError(f"Invalid HVSE value found in configuration: '{target_hv_value}'")
+
+                # Call the ramping method
+                self.set_HVSE(hv_to_set, save_to_flash=save_to_flash) # Uses default step/delay
+            except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
+                 self.logger.error(f"{LOG_PREFIX} Error applying HVSE setting '{target_hv_value}': {e}")
+                 raise # Re-raise the exception
+        elif target_hv_value is not None and skip_hvse:
+             self.logger.info(f"{LOG_PREFIX} HVSE parameter found in configuration ({target_hv_value}) but skipped due to skip_hvse=True.")
+        else:
+             self.logger.info(f"{LOG_PREFIX} No HVSE parameter found in the configuration to apply separately.")
+
+        self.logger.info(f"{LOG_PREFIX} Configuration {source_description} applied successfully.")
+
     def get_available_default_configurations_with_content(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
         """
         Scans the 'default' directory in the library path for available default configuration files.
@@ -1716,54 +1841,20 @@ class AmptekMCA():
                 for config_file in device_dir.glob('*.txt'):
                     if config_file.is_file():
                         config_name = config_file.stem # Filename without extension
-                        parsed_config = OrderedDict()
                         try:
-                            with config_file.open('r', encoding='utf-8') as f:
-                                for line_num, line in enumerate(f, 1):
-                                    line = line.strip()
-                                    # Skip empty lines or section headers like [Header]
-                                    if not line or (line.startswith('[') and line.endswith(']')):
-                                        continue
-
-                                    # Process potentially multiple commands on one line
-                                    parts = line.split(';')
-                                    for part in parts:
-                                        part = part.strip()
-                                        if not part: # Skip empty parts
-                                            continue
-
-                                        # Split only on the first '=', allow '=' in value
-                                        key_value = part.split('=', 1)
-                                        if len(key_value) == 2:
-                                            key = key_value[0].strip().upper() # Use uppercase keys
-                                            value = key_value[1].strip() # Get value
-                                            if key and value: # Ensure key and value are not empty
-                                                parsed_config[key] = value
-                                            elif not key:
-                                                self.logger.debug(f"{LOG_PREFIX} Skipping empty key in part '{part}' in file {config_file.name}, line {line_num}")
-                                            elif not value:
-                                                self.logger.debug(f"{LOG_PREFIX} Skipping empty value in part '{part}' in file {config_file.name}, line {line_num}")
-                                        else:
-                                            # Handle parts without '=' if necessary
-                                            self.logger.warning(f"{LOG_PREFIX} Skipping malformed part '{part}' (no '=') in file {config_file.name}, line {line_num}")
-
+                            # Use the common parsing method
+                            parsed_config = self._parse_configuration_file(config_file, device_type)
+                            
                             if parsed_config:
-                                # Remove unsupported parameters
-                                self.logger.debug(f"{LOG_PREFIX} Removing unsupported parameters from config '{config_name}' for device '{device_type}'...")
-                                parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type)}
-                                # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
-                                if 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
-                                    self.logger.debug(f"{LOG_PREFIX} Fixing RTDS value in config '{config_name}' for device '{device_type}' from 0 to 2.")
-                                    parsed_config['RTDS'] = '2'
                                 # Save
                                 device_configs[config_name] = parsed_config
                             else:
                                 self.logger.warning(f"{LOG_PREFIX} No valid configuration pairs found in {config_file.name}")
 
-                        except IOError as e:
-                             self.logger.error(f"{LOG_PREFIX} Error reading config file {config_file.name}: {e}")
+                        except (IOError, ValueError) as e:
+                             self.logger.error(f"{LOG_PREFIX} Error loading config file {config_file.name}: {e}")
                         except Exception as e:
-                             self.logger.error(f"{LOG_PREFIX} Error parsing config file {config_file.name}: {e}")
+                             self.logger.error(f"{LOG_PREFIX} Unexpected error processing config file {config_file.name}: {e}")
 
                 if device_configs:
                     available_configs[device_type] = device_configs
@@ -1816,6 +1907,81 @@ class AmptekMCA():
             return {}
 
         return simplified_configs
+
+    def get_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None) -> Optional[OrderedDictType[str, Any]]:
+        """
+        Loads and parses a configuration file from the specified path.
+        
+        Args:
+            config_file_path: Path to the configuration file to load
+            device_type: Optional device type for parameter validation and filtering.
+                        If provided, unsupported parameters will be filtered out.
+                        
+        Returns:
+            An OrderedDict containing the key-value pairs from the configuration file,
+            with values potentially converted to int/float where possible.
+            Returns None if the file doesn't exist or couldn't be parsed.
+        """
+        self.logger.info(f"{LOG_PREFIX} Loading configuration from file '{config_file_path}'...")
+        
+        config_path = Path(config_file_path)
+        
+        if not config_path.exists():
+            self.logger.error(f"{LOG_PREFIX} Configuration file not found: {config_file_path}")
+            return None
+            
+        if not config_path.is_file():
+            self.logger.error(f"{LOG_PREFIX} Path is not a file: {config_file_path}")
+            return None
+            
+        try:
+            parsed_config = self._parse_configuration_file(config_path, device_type)
+            
+            if not parsed_config:
+                self.logger.warning(f"{LOG_PREFIX} No valid configuration pairs found in {config_file_path}")
+                return None
+                
+            self.logger.info(f"{LOG_PREFIX} Configuration read successfully from '{config_file_path}' ({len(parsed_config)} parameters).")
+            return parsed_config
+            
+        except (IOError, ValueError) as e:
+            self.logger.error(f"{LOG_PREFIX} Failed to load configuration from '{config_file_path}': {e}")
+            return None
+
+    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False) -> None:
+        """
+        Loads a configuration file and applies it to the device.
+        
+        Loads the specified configuration file, sends all parameters except for HVSE,
+        and then calls set_HVSE to apply the high voltage with ramping.
+        
+        Args:
+            config_file_path: Path to the configuration file to load and apply
+            device_type: Optional device type for parameter validation and filtering.
+                        If provided, unsupported parameters will be filtered out.
+            save_to_flash: If True, the configuration will be saved to flash.
+                          If False, it will not be saved (default: False).
+            skip_hvse: If True, the HVSE parameter will be skipped and not applied
+                      (default: False).
+                      
+        Raises:
+            AmptekMCAError: If connection or communication fails, if the configuration
+                            file cannot be found/loaded, or during command execution.
+            AmptekMCAAckError: If the device returns an error ACK.
+            ValueError: If configuration values are invalid.
+            FileNotFoundError: If the configuration file doesn't exist.
+        """
+        self.logger.info(f"{LOG_PREFIX} Applying configuration from file '{config_file_path}'...")
+        
+        # 1. Load the configuration from file
+        config_to_apply = self.get_configuration_from_file(config_file_path, device_type)
+        
+        if config_to_apply is None:
+            # Error already logged by get_configuration_from_file
+            raise AmptekMCAError(f"Could not load configuration from file '{config_file_path}'.")
+
+        # 2. Apply the configuration using the common method
+        self._apply_configuration_dict(config_to_apply, f"from file '{config_file_path}'", save_to_flash, skip_hvse)
 
     def get_default_configuration(self, device_type: str, config_name: str) -> Optional[OrderedDictType[str, Any]]:
         """
@@ -1891,47 +2057,8 @@ class AmptekMCA():
             # Error already logged by get_default_configuration
             raise AmptekMCAError(f"Could not retrieve default configuration '{config_name}' for device '{device_type}'.")
 
-        # 2. Separate HVSE command if present
-        # Use pop with default None. Assumes keys are uppercase from get_default_configuration
-        target_hv_value = config_to_apply.pop('HVSE', None)
-
-        # 3. Send the rest of the configuration
-        if config_to_apply: # Check if there are other parameters left
-            self.logger.info(f"{LOG_PREFIX} Sending main configuration parameters ({len(config_to_apply)} items)...")
-            try:
-                self.send_configuration(config_to_apply, save_to_flash=save_to_flash) # Do not save in flash, avoid memory degradation
-            except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                self.logger.error(f"{LOG_PREFIX} Error sending main configuration part: {e}")
-                raise # Re-raise the exception
-        else:
-            self.logger.info(f"{LOG_PREFIX} No main configuration parameters to send (only HVSE was present or config empty).")
-
-        # 4. Apply HVSE using the ramping method (if it was present and not skipped)
-        if target_hv_value is not None and not skip_hvse:
-            self.logger.info(f"{LOG_PREFIX} Applying HVSE setting separately: {target_hv_value}")
-            try:
-                # Convert potential numeric strings back if needed, though get_default should type them
-                hv_to_set: Union[float, int, str]
-                if isinstance(target_hv_value, str) and target_hv_value.upper() == 'OFF':
-                    hv_to_set = 'OFF'
-                else:
-                    # Attempt conversion to float, handle potential errors if value wasn't typed correctly
-                    try:
-                        hv_to_set = float(target_hv_value)
-                    except (ValueError, TypeError):
-                         raise ValueError(f"Invalid HVSE value found in configuration: '{target_hv_value}'")
-
-                # Call the ramping method
-                self.set_HVSE(hv_to_set, save_to_flash=save_to_flash) # Uses default step/delay
-            except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                 self.logger.error(f"{LOG_PREFIX} Error applying HVSE setting '{target_hv_value}': {e}")
-                 raise # Re-raise the exception
-        elif target_hv_value is not None and skip_hvse:
-             self.logger.info(f"{LOG_PREFIX} HVSE parameter found in configuration ({target_hv_value}) but skipped due to skip_hvse=True.")
-        else:
-             self.logger.info(f"{LOG_PREFIX} No HVSE parameter found in the configuration to apply separately.")
-
-        self.logger.info(f"{LOG_PREFIX} Default configuration '{config_name}' applied successfully for '{device_type}'.")
+        # 2. Apply the configuration using the common method
+        self._apply_configuration_dict(config_to_apply, f"'{config_name}' for '{device_type}'", save_to_flash, skip_hvse)
 
     def wait_until_mca_is_closed(self, time_between_checks: float = 1) -> None:
         """
