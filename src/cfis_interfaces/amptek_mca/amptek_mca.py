@@ -1751,19 +1751,8 @@ class AmptekMCA():
         if target_hv_value is not None and not skip_hvse:
             self.logger.info(f"{LOG_PREFIX} Applying HVSE setting separately: {target_hv_value}")
             try:
-                # Convert potential numeric strings back if needed
-                hv_to_set: Union[float, int, str]
-                if isinstance(target_hv_value, str) and target_hv_value.upper() == 'OFF':
-                    hv_to_set = 'OFF'
-                else:
-                    # Attempt conversion to float, handle potential errors if value wasn't typed correctly
-                    try:
-                        hv_to_set = float(target_hv_value)
-                    except (ValueError, TypeError):
-                         raise ValueError(f"Invalid HVSE value found in configuration: '{target_hv_value}'")
-
-                # Call the ramping method
-                self.set_HVSE(hv_to_set, save_to_flash=save_to_flash) # Uses default step/delay
+                # Call the ramping method - set_HVSE handles all parsing and validation
+                self.set_HVSE(target_hv_value, save_to_flash=save_to_flash) # Uses default step/delay
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                  self.logger.error(f"{LOG_PREFIX} Error applying HVSE setting '{target_hv_value}': {e}")
                  raise # Re-raise the exception
