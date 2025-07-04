@@ -82,17 +82,13 @@ RESP_MINIX_STATUS = (0x80, 0x02) # Mini-X2
 # PID1 = 0x83 -> SCA Data
 RESP_COMM_TEST_ECHO = (0x8F, 0x7F)
 
-# Logging prefix constant
-LOG_PREFIX = "[Amptek MCA]"
-
-
 class AmptekMCAError(Exception):
     """Custom exception for Amptek PX5 errors."""
     pass
 
 class AmptekMCAAckError(AmptekMCAError):
     """Exception for receiving an error ACK from the device."""
-    def __init__(self, pid1: int, pid2: int, data: Optional[bytes] = None):
+    def __init__(self, pid1: int, pid2: int, data: Optional[bytes], log_prefix: str):
         self.pid1 = pid1
         self.pid2 = pid2
         self.data = data
@@ -122,7 +118,7 @@ class AmptekMCAAckError(AmptekMCAError):
             except Exception:
                 error_message += f": {data.hex()}" # Show hex if decode fails
 
-        super().__init__(f"{LOG_PREFIX} ACK Error received: {error_message} (PID1={pid1}, PID2={pid2})")
+        super().__init__(f"{log_prefix} ACK Error received: {error_message} (PID1={pid1}, PID2={pid2})")
 
 
 class AmptekMCA():
@@ -161,7 +157,8 @@ class AmptekMCA():
     def __init__(self,
                 logger: Optional[logging.Logger] = None,
                 logger_name: str = "AmptekMCA",
-                logger_level: int = logging.INFO
+                logger_level: int = logging.INFO,
+                device_index: Optional[int] = None
             ) -> None:
         """
         Initialize the Amptek MCA communication class.
@@ -171,14 +168,17 @@ class AmptekMCA():
                                        a new logger will be created with the provided name and level.
             logger_name (str): The name of the new logger. Defaults to "AmptekMCA".
             logger_level (int): The logging level for the new logger. Defaults to logging.INFO.
+            device_index (Optional[int]): Device index for multi-device setups. Used in log messages.
         """
         self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
+        self.device_index = device_index
+        self.log_prefix = f"[Amptek MCA{f' {self.device_index}' if self.device_index is not None else ''}]"
         self.dev: Optional[usb.core.Device] = None
         self.ep_out: Optional[usb.core.Endpoint] = None
         self.ep_in: Optional[usb.core.Endpoint] = None
         self.last_status: Dict[str, Any] = {}
         self.model: str = None
-        self.logger.info(f"{LOG_PREFIX} Amptek MCA class initialized.")
+        self.logger.info(f"{self.log_prefix} Amptek MCA class initialized.")
 
     def connect(self, device_index: int = 0) -> None:
         """
@@ -196,10 +196,10 @@ class AmptekMCA():
             # Other exceptions like NoBackendError, USBError might be raised
         """
         if self.dev:
-            self.logger.warning(f"{LOG_PREFIX} Already connected.")
+            self.logger.warning(f"{self.log_prefix} Already connected.")
             return
 
-        self.logger.info(f"{LOG_PREFIX} Searching for devices (VID={self.VENDOR_ID:#06x}, PID={self.PRODUCT_ID:#06x})...")
+        self.logger.info(f"{self.log_prefix} Searching for devices (VID={self.VENDOR_ID:#06x}, PID={self.PRODUCT_ID:#06x})...")
 
         # Get the backend first
         backend = UsbUtils.get_libusb_backend()
@@ -209,45 +209,45 @@ class AmptekMCA():
 
         # Check if devices were found
         if not devices:
-            self.logger.error(f"{LOG_PREFIX} No matching devices found.")
+            self.logger.error(f"{self.log_prefix} No matching devices found.")
             raise RuntimeError("No matching Amptek MCA devices found.")
 
-        self.logger.info(f"{LOG_PREFIX} Found {len(devices)} matching device(s).")
+        self.logger.info(f"{self.log_prefix} Found {len(devices)} matching device(s).")
 
         # Validate the index
         if not (0 <= device_index < len(devices)):
-            self.logger.error(f"{LOG_PREFIX} Device index {device_index} is out of range (found {len(devices)} devices).")
+            self.logger.error(f"{self.log_prefix} Device index {device_index} is out of range (found {len(devices)} devices).")
             raise ValueError(f"Device index {device_index} is out of range. Valid indices: 0 to {len(devices) - 1}.")
 
         # Select the device using the index
         self.dev = devices[device_index]
-        self.logger.info(f"{LOG_PREFIX} Selected device at index {device_index} (Bus: {self.dev.bus}, Address: {self.dev.address}).")
+        self.logger.info(f"{self.log_prefix} Selected device at index {device_index} (Bus: {self.dev.bus}, Address: {self.dev.address}).")
 
         if self.dev is None:
-            self.logger.error(f"{LOG_PREFIX} Device not found.")
+            self.logger.error(f"{self.log_prefix} Device not found.")
             raise AmptekMCAError("Amptek MCA device not found.")
 
-        self.logger.info(f"{LOG_PREFIX} Device found.")
+        self.logger.info(f"{self.log_prefix} Device found.")
 
         try:
             # Detach kernel driver if active (Linux/macOS)
             if self.dev.is_kernel_driver_active(0):
-                self.logger.debug(f"{LOG_PREFIX} Detaching kernel driver.")
+                self.logger.debug(f"{self.log_prefix} Detaching kernel driver.")
                 self.dev.detach_kernel_driver(0)
         except usb.core.USBError as e:
              # This can happen if the driver is already detached or on Windows
-             self.logger.warning(f"{LOG_PREFIX} Could not detach kernel driver (might be okay): {e}")
+             self.logger.warning(f"{self.log_prefix} Could not detach kernel driver (might be okay): {e}")
         except NotImplementedError:
              # is_kernel_driver_active not implemented on all platforms (e.g., Windows)
-             self.logger.debug(f"{LOG_PREFIX} Kernel driver check not applicable on this platform.")
+             self.logger.debug(f"{self.log_prefix} Kernel driver check not applicable on this platform.")
 
 
         try:
             # Set the active configuration. Needs to be done before claiming interface.
             self.dev.set_configuration()
-            self.logger.debug(f"{LOG_PREFIX} Set USB configuration.")
+            self.logger.debug(f"{self.log_prefix} Set USB configuration.")
         except usb.core.USBError as e:
-            self.logger.error(f"{LOG_PREFIX} Could not set configuration: {e}")
+            self.logger.error(f"{self.log_prefix} Could not set configuration: {e}")
             self.dev = None # Ensure disconnect releases nothing
             raise AmptekMCAError(f"Failed to set USB configuration: {e}")
 
@@ -275,40 +275,40 @@ class AmptekMCA():
         )
 
         if self.ep_out is None or self.ep_in is None:
-            self.logger.error(f"{LOG_PREFIX} Could not find IN or OUT endpoint.")
+            self.logger.error(f"{self.log_prefix} Could not find IN or OUT endpoint.")
             self.dev = None # Ensure disconnect releases nothing
             raise AmptekMCAError("Could not find required USB endpoints (0x81 IN, 0x02 OUT).")
 
-        self.logger.debug(f"{LOG_PREFIX} Found EP IN address: {self.ep_in.bEndpointAddress:#04x}")
-        self.logger.debug(f"{LOG_PREFIX} Found EP OUT address: {self.ep_out.bEndpointAddress:#04x}")
-        self.logger.info(f"{LOG_PREFIX} Connection established.")
+        self.logger.debug(f"{self.log_prefix} Found EP IN address: {self.ep_in.bEndpointAddress:#04x}")
+        self.logger.debug(f"{self.log_prefix} Found EP OUT address: {self.ep_out.bEndpointAddress:#04x}")
+        self.logger.info(f"{self.log_prefix} Connection established.")
 
         # Get the status after connecting
-        self.logger.info(f"{LOG_PREFIX} Requesting initial status...")
+        self.logger.info(f"{self.log_prefix} Requesting initial status...")
         self.get_status()  # Error handling is done in get_status()
-        self.logger.info(f"{LOG_PREFIX} Initial status received.")
-        self.logger.info(f"{LOG_PREFIX} Device model: {self.model}")
+        self.logger.info(f"{self.log_prefix} Initial status received.")
+        self.logger.info(f"{self.log_prefix} Device model: {self.model}")
 
     def disconnect(self) -> None:
         """
         Release the USB interface and close the device connection.
         """
         if self.dev is not None:
-            self.logger.info(f"{LOG_PREFIX} Disconnecting...")
+            self.logger.info(f"{self.log_prefix} Disconnecting...")
             try:
                 usb.util.dispose_resources(self.dev)
-                self.logger.debug(f"{LOG_PREFIX} Disposed USB resources.")
+                self.logger.debug(f"{self.log_prefix} Disposed USB resources.")
             except usb.core.USBError as e:
-                 self.logger.warning(f"{LOG_PREFIX} Error during disconnect/resource disposal: {e}")
+                 self.logger.warning(f"{self.log_prefix} Error during disconnect/resource disposal: {e}")
             except Exception as e:
-                 self.logger.error(f"{LOG_PREFIX} Unexpected error during disconnect: {e}")
+                 self.logger.error(f"{self.log_prefix} Unexpected error during disconnect: {e}")
             finally:
                 self.dev = None
                 self.ep_in = None
                 self.ep_out = None
-                self.logger.info(f"{LOG_PREFIX} Disconnected.")
+                self.logger.info(f"{self.log_prefix} Disconnected.")
         else:
-            self.logger.info(f"{LOG_PREFIX} Already disconnected.")
+            self.logger.info(f"{self.log_prefix} Already disconnected.")
 
     def _calculate_checksum(self, packet_bytes: bytes) -> int:
         """
@@ -370,18 +370,18 @@ class AmptekMCA():
         packet = self._build_request_packet(pid1, pid2, data)
         write_timeout = timeout if timeout is not None else self.DEFAULT_TIMEOUT
 
-        self.logger.debug(f"{LOG_PREFIX} Sending packet (PID1={pid1}, PID2={pid2}, LEN={len(data) if data else 0}): {packet.hex()}")
+        self.logger.debug(f"{self.log_prefix} Sending packet (PID1={pid1}, PID2={pid2}, LEN={len(data) if data else 0}): {packet.hex()}")
 
         try:
             bytes_written = self.ep_out.write(packet, timeout=write_timeout)
             if bytes_written != len(packet):
                  raise AmptekMCAError(f"USB write error: Tried to write {len(packet)} bytes, but wrote {bytes_written}.")
-            self.logger.debug(f"{LOG_PREFIX} Wrote {bytes_written} bytes.")
+            self.logger.debug(f"{self.log_prefix} Wrote {bytes_written} bytes.")
         except usb.core.USBTimeoutError:
-            self.logger.error(f"{LOG_PREFIX} USB write timed out after {write_timeout}ms.")
+            self.logger.error(f"{self.log_prefix} USB write timed out after {write_timeout}ms.")
             raise AmptekMCAError("USB write timed out.")
         except usb.core.USBError as e:
-            self.logger.error(f"{LOG_PREFIX} USB write error: {e}")
+            self.logger.error(f"{self.log_prefix} USB write error: {e}")
             raise AmptekMCAError(f"USB write failed: {e}")
 
     def _read_response(self, timeout: Optional[int] = None) -> Tuple[int, int, Optional[bytes]]:
@@ -408,41 +408,41 @@ class AmptekMCA():
         try:
             # Read the 6-byte header first
             # Max response size is 32775 bytes (header + data + checksum).
-            self.logger.debug(f"{LOG_PREFIX} Reading header (expecting 6 bytes...")
+            self.logger.debug(f"{self.log_prefix} Reading header (expecting 6 bytes...")
 
             header = bytes(self.ep_in.read(6, timeout=read_timeout))
             if len(header) < 6:
                  raise AmptekMCAError(f"USB read error: Expected 6 header bytes, got {len(header)}.")
 
-            self.logger.debug(f"{LOG_PREFIX} Read header: {header.hex()}")
+            self.logger.debug(f"{self.log_prefix} Read header: {header.hex()}")
 
             # Parse header
             sync1, sync2, pid1, pid2, data_len = struct.unpack('>BBBBH', header)
 
             # Validate sync bytes
             if sync1 != SYNC_BYTE_1 or sync2 != SYNC_BYTE_2:
-                self.logger.error(f"{LOG_PREFIX} Invalid sync bytes received: {sync1:#04x} {sync2:#04x}")
+                self.logger.error(f"{self.log_prefix} Invalid sync bytes received: {sync1:#04x} {sync2:#04x}")
                 raise AmptekMCAError(f"Invalid sync bytes: Expected {SYNC_BYTE_1:#04x} {SYNC_BYTE_2:#04x}, got {sync1:#04x} {sync2:#04x}")
 
-            self.logger.debug(f"{LOG_PREFIX} Received packet header: PID1={pid1}, PID2={pid2}, LEN={data_len}")
+            self.logger.debug(f"{self.log_prefix} Received packet header: PID1={pid1}, PID2={pid2}, LEN={data_len}")
 
             # Read data payload (if any) and checksum (2 bytes)
             bytes_to_read = data_len + 2
             full_response_data = b''
             if bytes_to_read > 0:
-                self.logger.debug(f"{LOG_PREFIX} Reading data ({data_len} bytes) and checksum (2 bytes)...")
+                self.logger.debug(f"{self.log_prefix} Reading data ({data_len} bytes) and checksum (2 bytes)...")
                 full_response_data = bytes(self.ep_in.read(bytes_to_read, timeout=read_timeout))
 
                 if len(full_response_data) < bytes_to_read:
                     raise AmptekMCAError(f"USB read error: Expected {bytes_to_read} data+checksum bytes, got {len(full_response_data)}.")
 
-                self.logger.debug(f"{LOG_PREFIX} Read {len(full_response_data)} data+checksum bytes.")
+                self.logger.debug(f"{self.log_prefix} Read {len(full_response_data)} data+checksum bytes.")
                 if data_len > 0:
                     data_payload = full_response_data[:data_len]
                 received_checksum = struct.unpack('>H', full_response_data[data_len:])[0]
             else:
                  # Read the checksum
-                 self.logger.debug(f"{LOG_PREFIX} Reading checksum (2 bytes) for LEN=0 packet...")
+                 self.logger.debug(f"{self.log_prefix} Reading checksum (2 bytes) for LEN=0 packet...")
                  checksum_bytes = bytes(self.ep_in.read(2, timeout=read_timeout))
                  if len(checksum_bytes) < 2:
                      raise AmptekMCAError(f"USB read error: Expected 2 checksum bytes, got {len(checksum_bytes)}.")
@@ -453,48 +453,48 @@ class AmptekMCA():
             calculated_checksum = self._calculate_checksum(packet_base)
 
             if received_checksum != calculated_checksum:
-                self.logger.error(f"{LOG_PREFIX} Checksum error! Received={received_checksum:#06x}, Calculated={calculated_checksum:#06x}")
+                self.logger.error(f"{self.log_prefix} Checksum error! Received={received_checksum:#06x}, Calculated={calculated_checksum:#06x}")
                 raise AmptekMCAError(f"Checksum mismatch: Received={received_checksum:#06x}, Calculated={calculated_checksum:#06x}")
 
-            self.logger.debug(f"{LOG_PREFIX} Checksum OK ({received_checksum:#06x}).")
+            self.logger.debug(f"{self.log_prefix} Checksum OK ({received_checksum:#06x}).")
 
             # Check if it's an ACK Error packet (PID1 = 0xFF, PID2 != 0x00, 0x0C, 0x0F)
             if pid1 == 0xFF and pid2 not in [ACK_OK, ACK_OK_SHARING_REQ, ACK_OK_FPGA_UPLOAD_ADDR]:
-                self.logger.warning(f"{LOG_PREFIX} Received ACK Error: PID2={pid2}")
-                raise AmptekMCAAckError(pid1, pid2, data_payload)
+                self.logger.warning(f"{self.log_prefix} Received ACK Error: PID2={pid2}")
+                raise AmptekMCAAckError(pid1, pid2, data_payload, self.log_prefix)
 
             # Return PID1, PID2, and the data payload
             return pid1, pid2, data_payload
 
         except usb.core.USBTimeoutError:
-            self.logger.error(f"{LOG_PREFIX} USB read timed out after {read_timeout}ms.")
+            self.logger.error(f"{self.log_prefix} USB read timed out after {read_timeout}ms.")
             raise AmptekMCAError("USB read timed out.")
         except usb.core.USBError as e:
             # Handle potential pipe errors (e.g., stall) which might indicate device state issues
             if e.errno == 32: # errno.EPIPE Broken pipe - often indicates stall
-                 self.logger.error(f"{LOG_PREFIX} USB pipe error (stall?): {e}. Clearing stall if possible.")
+                 self.logger.error(f"{self.log_prefix} USB pipe error (stall?): {e}. Clearing stall if possible.")
                  try:
                      # Attempt to clear stall on the IN endpoint
                      self.dev.clear_halt(self.ep_in.bEndpointAddress)
-                     self.logger.info(f"{LOG_PREFIX} Cleared stall on EP IN.")
+                     self.logger.info(f"{self.log_prefix} Cleared stall on EP IN.")
                  except Exception as clear_err:
-                     self.logger.error(f"{LOG_PREFIX} Failed to clear stall: {clear_err}")
+                     self.logger.error(f"{self.log_prefix} Failed to clear stall: {clear_err}")
                  raise AmptekMCAError(f"USB pipe error (stall?): {e}")
             else:
-                 self.logger.error(f"{LOG_PREFIX} USB read error: {e}")
+                 self.logger.error(f"{self.log_prefix} USB read error: {e}")
                  raise AmptekMCAError(f"USB read failed: {e}")
         except AmptekMCAAckError as e:
             # Propagate ACK errors directly
             raise e
         except Exception as e:
             # Catch any other unexpected errors during read/parse
-            self.logger.error(f"{LOG_PREFIX} Unexpected error during response read/parse: {e}")
+            self.logger.error(f"{self.log_prefix} Unexpected error during response read/parse: {e}")
             raise AmptekMCAError(f"Unexpected error reading response: {e}")
 
 
     # --- Public Command Methods ---
 
-    def get_status_bytes(self, silent: bool = False) -> bytes:
+    def _get_status_bytes(self, silent: bool = False) -> bytes:
         """
         Requests and returns the 64-byte status data from the device.
         args:
@@ -506,14 +506,14 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
         """
         silent_log = self.logger.debug if silent else self.logger.info
-        silent_log(f"{LOG_PREFIX} Requesting status...")
+        silent_log(f"{self.log_prefix} Requesting status...")
         self._send_request(REQ_STATUS[0], REQ_STATUS[1])
         pid1, pid2, data = self._read_response()
 
         if (pid1, pid2) != RESP_STATUS:
             # Could be Mini-X status or an unexpected response
             if (pid1, pid2) == RESP_MINIX_STATUS:
-                self.logger.error(f"{LOG_PREFIX} Received Mini-X Status. This device is not supported.")
+                self.logger.error(f"{self.log_prefix} Received Mini-X Status. This device is not supported.")
                 raise AmptekMCAError("Received Mini-X Status. This device is not supported.")
             else:
                  raise AmptekMCAError(f"Unexpected response packet received for Get Status: PID1={pid1}, PID2={pid2}")
@@ -521,7 +521,7 @@ class AmptekMCA():
         if data is None or len(data) != 64:
              raise AmptekMCAError(f"Invalid status data received: Length={len(data) if data else 'None'}")
 
-        silent_log(f"{LOG_PREFIX} Status received successfully.")
+        silent_log(f"{self.log_prefix} Status received successfully.")
         return data
 
     def get_status(self, silent: bool = False) -> Dict[str, Any]:
@@ -541,8 +541,8 @@ class AmptekMCA():
                             received data cannot be parsed correctly.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        status_bytes = self.get_status_bytes(silent=silent)
-        self.logger.debug(f"{LOG_PREFIX} Parsing status bytes...")
+        status_bytes = self._get_status_bytes(silent=silent)
+        self.logger.debug(f"{self.log_prefix} Parsing status bytes...")
         status_dict: Dict[str, Any] = {}
 
         try:
@@ -631,18 +631,18 @@ class AmptekMCA():
             bl_ver_map = {0xFF: "Original", 0x80: "7.00.00", 0x7F: "7.00.01"}
             status_dict['bootloader_version'] = bl_ver_map.get(status_bytes[48], f"Unknown ({status_bytes[48]:#04x})")
 
-            self.logger.debug(f"{LOG_PREFIX} Status parsed successfully.")
+            self.logger.debug(f"{self.log_prefix} Status parsed successfully.")
 
         except struct.error as e:
-            self.logger.error(f"{LOG_PREFIX} Failed to unpack status bytes: {e}")
+            self.logger.error(f"{self.log_prefix} Failed to unpack status bytes: {e}")
             raise AmptekMCAError(f"Failed to parse status packet structure: {e}")
         except IndexError:
             # This shouldn't happen if get_status_bytes validated length, but good practice
-            self.logger.error(f"{LOG_PREFIX} Status packet too short for parsing.")
+            self.logger.error(f"{self.log_prefix} Status packet too short for parsing.")
             raise AmptekMCAError("Status packet too short for parsing.")
         except Exception as e:
             # Catch any other unexpected errors during parsing
-            self.logger.error(f"{LOG_PREFIX} Unexpected error parsing status: {e}")
+            self.logger.error(f"{self.log_prefix} Unexpected error parsing status: {e}")
             raise AmptekMCAError(f"Unexpected error parsing status: {e}")
 
         self.last_status = status_dict # Save the status for later use
@@ -673,7 +673,7 @@ class AmptekMCA():
         """
         return self.model if self.model else 'Unknown'
 
-    def get_spectrum_bytes(self) -> bytes:
+    def _get_spectrum_bytes(self) -> bytes:
         """
         Requests and returns the raw spectrum data from the MCA device.
 
@@ -688,7 +688,7 @@ class AmptekMCA():
                             unexpected response packet is received.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        self.logger.info(f"{LOG_PREFIX} Requesting spectrum bytes...")
+        self.logger.info(f"{self.log_prefix} Requesting spectrum bytes...")
         # Send the Request Spectrum command (PID1=2, PID2=1)
         self._send_request(REQ_SPECTRUM[0], REQ_SPECTRUM[1])
         # Read the response, which should be a spectrum packet (PID1=0x81)
@@ -706,7 +706,7 @@ class AmptekMCA():
              # This shouldn't happen for a valid spectrum response, but check anyway
              raise AmptekMCAError("Received spectrum response packet but data payload is missing.")
 
-        self.logger.info(f"{LOG_PREFIX} Spectrum bytes received successfully ({len(data)} bytes).")
+        self.logger.info(f"{self.log_prefix} Spectrum bytes received successfully ({len(data)} bytes).")
         return data
     
     def get_spectrum(self) -> Spectrum:
@@ -725,11 +725,11 @@ class AmptekMCA():
                             received spectrum data is invalid.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        spectrum_bytes = self.get_spectrum_bytes()
-        self.logger.debug(f"{LOG_PREFIX} Parsing spectrum bytes...")
+        spectrum_bytes = self._get_spectrum_bytes()
+        self.logger.debug(f"{self.log_prefix} Parsing spectrum bytes...")
 
         if len(spectrum_bytes) % 3 != 0:
-            self.logger.error(f"{LOG_PREFIX} Invalid spectrum data length ({len(spectrum_bytes)} bytes), not divisible by 3.")
+            self.logger.error(f"{self.log_prefix} Invalid spectrum data length ({len(spectrum_bytes)} bytes), not divisible by 3.")
             raise AmptekMCAError("Invalid spectrum data length received.")
 
         num_channels = len(spectrum_bytes) // 3
@@ -746,13 +746,13 @@ class AmptekMCA():
                 count = struct.unpack('<I', count_bytes)[0]
                 spectrum_counts.append(count)
 
-            self.logger.debug(f"{LOG_PREFIX} Spectrum parsed successfully ({num_channels} channels).")
+            self.logger.debug(f"{self.log_prefix} Spectrum parsed successfully ({num_channels} channels).")
 
         except struct.error as e:
-            self.logger.error(f"{LOG_PREFIX} Failed to unpack spectrum bytes: {e}")
+            self.logger.error(f"{self.log_prefix} Failed to unpack spectrum bytes: {e}")
             raise AmptekMCAError(f"Failed to parse spectrum data structure: {e}")
         except Exception as e:
-            self.logger.error(f"{LOG_PREFIX} Unexpected error parsing spectrum: {e}")
+            self.logger.error(f"{self.log_prefix} Unexpected error parsing spectrum: {e}")
             raise AmptekMCAError(f"Unexpected error parsing spectrum: {e}")
 
         # Get status
@@ -805,7 +805,7 @@ class AmptekMCA():
             ValueError: If any single formatted command exceeds 512 bytes or
                         if dictionary values cannot be converted to string.
         """
-        self.logger.info(f"{LOG_PREFIX} Formatting and Sending Configuration (Save={save_to_flash})...")
+        self.logger.info(f"{self.log_prefix} Formatting and Sending Configuration (Save={save_to_flash})...")
 
         # 1. Format all commands into individual byte strings (CMD=VAL;)
         encoded_parts: List[bytes] = []
@@ -827,7 +827,7 @@ class AmptekMCA():
                     if len(reset_command_bytes) > 512:
                          raise ValueError("RESC=Y; command format exceeds 512 bytes (unexpected).")
                     del temp_config_dict[resc_key] # Remove from main processing list
-                    self.logger.debug(f"{LOG_PREFIX} RESC=Y command identified.")
+                    self.logger.debug(f"{self.log_prefix} RESC=Y command identified.")
                 except UnicodeEncodeError:
                      raise ValueError("RESC command value contains non-ASCII characters.")
 
@@ -870,10 +870,10 @@ class AmptekMCA():
 
         # 3. Send the list of payloads
         if not packet_payloads:
-            self.logger.info(f"{LOG_PREFIX} No configuration packets to send.")
+            self.logger.info(f"{self.log_prefix} No configuration packets to send.")
             return
 
-        self.logger.info(f"{LOG_PREFIX} Sending {len(packet_payloads)} configuration packet(s)...")
+        self.logger.info(f"{self.log_prefix} Sending {len(packet_payloads)} configuration packet(s)...")
         num_packets = len(packet_payloads)
 
         for i, payload in enumerate(packet_payloads):
@@ -887,16 +887,16 @@ class AmptekMCA():
                 pid1, pid2 = REQ_TEXT_CONFIG_NO_SAVE
                 log_save_status = "(Save=False - Intermediate)"
 
-            self.logger.debug(f"{LOG_PREFIX} Sending packet #{i+1}/{num_packets} ({len(payload)} bytes) {log_save_status}...")
+            self.logger.debug(f"{self.log_prefix} Sending packet #{i+1}/{num_packets} ({len(payload)} bytes) {log_save_status}...")
             self._send_request(pid1, pid2, payload)
             # Wait for ACK for each packet
             self._read_response(timeout=self.LONG_TIMEOUT) # Raises error on failure
             if save_to_flash:
                 time.sleep(0.2) # Small delay to allow device to process
 
-        self.logger.info(f"{LOG_PREFIX} Configuration sent successfully in {num_packets} packet(s).")
+        self.logger.info(f"{self.log_prefix} Configuration sent successfully in {num_packets} packet(s).")
 
-    def read_configuration_bytes(self, commands_to_read: List[str]) -> bytes:
+    def _read_configuration_bytes(self, commands_to_read: List[str]) -> bytes:
         """
         Requests a readback of specified configuration commands from the device.
 
@@ -920,15 +920,15 @@ class AmptekMCA():
                         contains non-ASCII characters.
         """
         if not commands_to_read:
-            self.logger.warning(f"{LOG_PREFIX} No commands provided for configuration readback.")
+            self.logger.warning(f"{self.log_prefix} No commands provided for configuration readback.")
             return b''
 
-        self.logger.info(f"{LOG_PREFIX} Requesting text configuration readback...")
+        self.logger.info(f"{self.log_prefix} Requesting text configuration readback...")
 
         # Format the list into the template string: CMD1;CMD2;SCAI=1;SCAL;
         # Commands are converted to uppercase. Add trailing semicolon.
         template_string = ";".join([cmd.upper() for cmd in commands_to_read]) + ";"
-        self.logger.debug(f"{LOG_PREFIX} Readback template string: {template_string}")
+        self.logger.debug(f"{self.log_prefix} Readback template string: {template_string}")
 
         try:
             template_bytes = template_string.encode('ascii')
@@ -953,7 +953,7 @@ class AmptekMCA():
              # Should not happen for this response type, but check
              raise AmptekMCAError("Received configuration readback response packet but data payload is missing.")
 
-        self.logger.info(f"{LOG_PREFIX} Raw configuration readback bytes received successfully ({len(data)} bytes).")
+        self.logger.info(f"{self.log_prefix} Raw configuration readback bytes received successfully ({len(data)} bytes).")
         return data
 
     def read_configuration(self, commands_to_read: List[str]) -> Dict[str, str]:
@@ -979,14 +979,14 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
             ValueError: If the input command list leads to an invalid request.
         """
-        response_bytes = self.read_configuration_bytes(commands_to_read)
-        self.logger.debug(f"{LOG_PREFIX} Parsing configuration readback response...")
+        response_bytes = self._read_configuration_bytes(commands_to_read)
+        self.logger.debug(f"{self.log_prefix} Parsing configuration readback response...")
 
         readback_dict: Dict[str, str] = {}
         try:
             # Decode the response bytes (should be ASCII)
             response_string = response_bytes.decode('ascii')
-            self.logger.debug(f"{LOG_PREFIX} Decoded response string: {response_string}")
+            self.logger.debug(f"{self.log_prefix} Decoded response string: {response_string}")
 
             # Split the response string by semicolon and parse each part
             parts = response_string.split(';')
@@ -1002,13 +1002,13 @@ class AmptekMCA():
 
                 readback_dict[command] = value # Store value as string
 
-            self.logger.debug(f"{LOG_PREFIX} Configuration readback parsed successfully.")
+            self.logger.debug(f"{self.log_prefix} Configuration readback parsed successfully.")
 
         except UnicodeDecodeError:
-            self.logger.error(f"{LOG_PREFIX} Failed to decode readback response as ASCII.")
+            self.logger.error(f"{self.log_prefix} Failed to decode readback response as ASCII.")
             raise AmptekMCAError("Failed to decode configuration readback response.")
         except Exception as e:
-            self.logger.error(f"{LOG_PREFIX} Unexpected error parsing readback response: {e}")
+            self.logger.error(f"{self.log_prefix} Unexpected error parsing readback response: {e}")
             raise AmptekMCAError(f"Unexpected error parsing configuration readback response: {e}")
 
         return readback_dict
@@ -1023,7 +1023,7 @@ class AmptekMCA():
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK instead of ACK OK.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Clear Spectrum command...")
+        self.logger.info(f"{self.log_prefix} Sending Clear Spectrum command...")
         # Send the Clear Spectrum command (PID 0xF0, 0x01)
         self._send_request(REQ_CLEAR_SPECTRUM[0], REQ_CLEAR_SPECTRUM[1])
 
@@ -1037,7 +1037,7 @@ class AmptekMCA():
              # This case should ideally not be reached if _read_response works correctly
              raise AmptekMCAError(f"Unexpected non-error response received for Clear Spectrum: PID1={pid1:#04x}, PID2={pid2:#04x}")
 
-        self.logger.info(f"{LOG_PREFIX} Clear Spectrum command acknowledged.")
+        self.logger.info(f"{self.log_prefix} Clear Spectrum command acknowledged.")
 
     def enable_mca(self) -> None:
         """
@@ -1046,14 +1046,14 @@ class AmptekMCA():
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Enable MCA command...")
+        self.logger.info(f"{self.log_prefix} Sending Enable MCA command...")
         self._send_request(REQ_ENABLE_MCA[0], REQ_ENABLE_MCA[1])
         pid1, pid2, _ = self._read_response() # Expecting ACK
 
         if pid1 != 0xFF or pid2 != ACK_OK:
             raise AmptekMCAError(f"Unexpected response received for Enable MCA: PID1={pid1}, PID2={pid2}")
 
-        self.logger.info(f"{LOG_PREFIX} Enable MCA command acknowledged.")
+        self.logger.info(f"{self.log_prefix} Enable MCA command acknowledged.")
 
     def disable_mca(self) -> None:
         """
@@ -1062,14 +1062,14 @@ class AmptekMCA():
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Disable MCA command...")
+        self.logger.info(f"{self.log_prefix} Sending Disable MCA command...")
         self._send_request(REQ_DISABLE_MCA[0], REQ_DISABLE_MCA[1])
         pid1, pid2, _ = self._read_response() # Expecting ACK
 
         if pid1 != 0xFF or pid2 != ACK_OK:
             raise AmptekMCAError(f"Unexpected response received for Disable MCA: PID1={pid1}, PID2={pid2}")
 
-        self.logger.info(f"{LOG_PREFIX} Disable MCA command acknowledged.")
+        self.logger.info(f"{self.log_prefix} Disable MCA command acknowledged.")
 
     def start_autoset_input_offset(self) -> None:
         """
@@ -1087,7 +1087,7 @@ class AmptekMCA():
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK instead of ACK OK.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Autoset Input Offset command...")
+        self.logger.info(f"{self.log_prefix} Sending Autoset Input Offset command...")
         # Send the Autoset Input Offset command (PID 0xF0, 0x05)
         self._send_request(REQ_AUTOSET_OFFSET[0], REQ_AUTOSET_OFFSET[1])
 
@@ -1100,7 +1100,7 @@ class AmptekMCA():
         if not (pid1 == 0xFF and pid2 == ACK_OK):
              raise AmptekMCAError(f"Unexpected non-error response received for Autoset Input Offset: PID1={pid1:#04x}, PID2={pid2:#04x}")
 
-        self.logger.info(f"{LOG_PREFIX} Autoset Input Offset command acknowledged (process started).")
+        self.logger.info(f"{self.log_prefix} Autoset Input Offset command acknowledged (process started).")
 
     def start_autoset_fast_threshold(self) -> None:
         """
@@ -1121,7 +1121,7 @@ class AmptekMCA():
             AmptekMCAError: If connection or communication fails.
             AmptekMCAAckError: If the device returns an error ACK instead of ACK OK.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Autoset Fast Threshold command...")
+        self.logger.info(f"{self.log_prefix} Sending Autoset Fast Threshold command...")
         # Send the Autoset Fast Threshold command (PID 0xF0, 0x06)
         self._send_request(REQ_AUTOSET_FAST_THRESH[0], REQ_AUTOSET_FAST_THRESH[1])
 
@@ -1134,9 +1134,9 @@ class AmptekMCA():
         if not (pid1 == 0xFF and pid2 == ACK_OK):
              raise AmptekMCAError(f"Unexpected non-error response received for Autoset Fast Threshold: PID1={pid1:#04x}, PID2={pid2:#04x}")
 
-        self.logger.info(f"{LOG_PREFIX} Autoset Fast Threshold command acknowledged (process started).")
+        self.logger.info(f"{self.log_prefix} Autoset Fast Threshold command acknowledged (process started).")
 
-    def echo_test_bytes(self, data_to_echo: bytes) -> bytes:
+    def _echo_test_bytes(self, data_to_echo: bytes) -> bytes:
         """
         Sends raw byte data to the device's echo command and returns the raw echoed bytes.
 
@@ -1154,7 +1154,7 @@ class AmptekMCA():
         if len(data_to_echo) > 512:
              raise ValueError("Echo data cannot exceed 512 bytes.")
 
-        self.logger.info(f"{LOG_PREFIX} Sending Echo Test with {len(data_to_echo)} bytes...")
+        self.logger.info(f"{self.log_prefix} Sending Echo Test with {len(data_to_echo)} bytes...")
         # Send Echo command (PID 0xF1, 0x7F)
         self._send_request(REQ_COMM_TEST_ECHO[0], REQ_COMM_TEST_ECHO[1], data_to_echo)
         # Read Echo response (PID 0x8F, 0x7F)
@@ -1166,12 +1166,12 @@ class AmptekMCA():
 
         # Check if received data matches sent data
         if data != data_to_echo:
-             self.logger.error(f"{LOG_PREFIX} Echo mismatch! Sent: {data_to_echo.hex()}, Received: {data.hex() if data else 'None'}")
+             self.logger.error(f"{self.log_prefix} Echo mismatch! Sent: {data_to_echo.hex()}, Received: {data.hex() if data else 'None'}")
              raise AmptekMCAError("Echo data mismatch.")
 
         # Ensure data is not None before returning
         returned_data = data if data is not None else b''
-        self.logger.info(f"{LOG_PREFIX} Echo Test successful ({len(returned_data)} bytes).")
+        self.logger.info(f"{self.log_prefix} Echo Test successful ({len(returned_data)} bytes).")
         return returned_data
 
     def echo_test(self, text_to_echo: str, encoding: str = 'ascii') -> str:
@@ -1192,22 +1192,22 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
             ValueError: If the encoded string exceeds 512 bytes or encoding/decoding fails.
         """
-        self.logger.info(f"{LOG_PREFIX} Sending Echo Test with string: '{text_to_echo}' using {encoding} encoding...")
+        self.logger.info(f"{self.log_prefix} Sending Echo Test with string: '{text_to_echo}' using {encoding} encoding...")
         try:
             encoded_data = text_to_echo.encode(encoding)
         except UnicodeEncodeError as e:
-            self.logger.error(f"{LOG_PREFIX} Failed to encode string using {encoding}: {e}")
+            self.logger.error(f"{self.log_prefix} Failed to encode string using {encoding}: {e}")
             raise ValueError(f"Failed to encode string using {encoding}: {e}")
 
         # Use the byte-level method to handle communication and validation
-        received_bytes = self.echo_test_bytes(encoded_data)
+        received_bytes = self._echo_test_bytes(encoded_data)
 
         try:
             decoded_string = received_bytes.decode(encoding)
-            self.logger.info(f"{LOG_PREFIX} Echo string received and decoded successfully.")
+            self.logger.info(f"{self.log_prefix} Echo string received and decoded successfully.")
             return decoded_string
         except UnicodeDecodeError as e:
-            self.logger.error(f"{LOG_PREFIX} Failed to decode echoed bytes using {encoding}: {e}")
+            self.logger.error(f"{self.log_prefix} Failed to decode echoed bytes using {encoding}: {e}")
             raise AmptekMCAError(f"Failed to decode echoed response using {encoding}: {e}")
 
     def get_parameters_info(self,
@@ -1256,14 +1256,14 @@ class AmptekMCA():
         # 3. Fetch MCAC value *if* MCSL or MCSH range calculation is needed
         mcac_val_str = required_params.get('MCAC', None) if required_params else None
         if not mcac_val_str and ('MCSL' in param_names_list or 'MCSH' in param_names_list):
-            self.logger.debug(f"{LOG_PREFIX} MCSL/MCSH requested, fetching current MCAC value for range calculation...")
+            self.logger.debug(f"{self.log_prefix} MCSL/MCSH requested, fetching current MCAC value for range calculation...")
             try:
                 mcac_config = self.read_configuration(['MCAC'])
                 mcac_val_str = mcac_config.get('MCAC')
                 if not mcac_val_str:
-                    self.logger.warning(f"{LOG_PREFIX} Failed to read back MCAC value for MCSL/MCSH range.")
+                    self.logger.warning(f"{self.log_prefix} Failed to read back MCAC value for MCSL/MCSH range.")
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                self.logger.warning(f"{LOG_PREFIX} Error reading MCAC value for MCSL/MCSH range: {e}. Range might be inaccurate.")
+                self.logger.warning(f"{self.log_prefix} Error reading MCAC value for MCSL/MCSH range: {e}. Range might be inaccurate.")
                 # Proceed without MCAC value, range logic will use default
         if not mcac_val_str:
             mcac_val_str = "1024"
@@ -1298,11 +1298,11 @@ class AmptekMCA():
                 hv_range = None
 
                 if internal_status is None: # Fetch status if not already done
-                    self.logger.debug(f"{LOG_PREFIX} Fetching status to determine HV polarity for {param_name} range...")
+                    self.logger.debug(f"{self.log_prefix} Fetching status to determine HV polarity for {param_name} range...")
                     try:
                         internal_status = self.get_last_status()
                     except (AmptekMCAError, AmptekMCAAckError) as e:
-                         self.logger.warning(f"{LOG_PREFIX} Could not fetch status for HV polarity check: {e}")
+                         self.logger.warning(f"{self.log_prefix} Could not fetch status for HV polarity check: {e}")
                          internal_status = {}
 
                 is_positive = internal_status.get('status_flags', {}).get('hv_polarity_positive')
@@ -1492,19 +1492,18 @@ class AmptekMCA():
         if device_id is None:
             device_id = self.get_model()
         if device_id == "Unknown":
-            self.logger.warning(f"{LOG_PREFIX} Device ID is unknown, cannot check parameter support.")
+            self.logger.warning(f"{self.log_prefix} Device ID is unknown, cannot check parameter support.")
             return False
         unsupported_devices = self.get_unsupported_devices_per_parameter()
         if parameter in unsupported_devices:
             if device_id in unsupported_devices[parameter]:
                 # Only log if the parameter is not supported by the device
-                self.logger.debug(f"{LOG_PREFIX} Parameter '{parameter}' is NOT supported by device '{device_id}'.")
+                self.logger.debug(f"{self.log_prefix} Parameter '{parameter}' is NOT supported by device '{device_id}'.")
                 return False
             else:
                 return True
         else:
             return True
-
 
     def set_HVSE(self, target_voltage: Union[float, int, str], step: float = 50.0, delay_sec: float = 0.5, save_to_flash: bool = False) -> None:
         """
@@ -1530,7 +1529,7 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK during command transmission.
             ValueError: If target_voltage format is invalid or step is non-positive.
         """
-        self.logger.info(f"{LOG_PREFIX} Setting HVSE to '{target_voltage}' with ramp (step={step}V, delay={delay_sec}s)...")
+        self.logger.info(f"{self.log_prefix} Setting HVSE to '{target_voltage}' with ramp (step={step}V, delay={delay_sec}s)...")
 
         if not isinstance(target_voltage, (float, int, str)):
              raise ValueError("target_voltage must be a number or the string 'OFF'")
@@ -1565,7 +1564,7 @@ class AmptekMCA():
             # Check polarity compatibility
             is_positive_capable = current_status.get('status_flags', {}).get('hv_polarity_positive')
             if is_positive_capable is None and device_id not in ["Unknown"]:
-                 self.logger.warning(f"{LOG_PREFIX} Could not determine HV polarity capability for {device_id}. Proceeding with caution.")
+                 self.logger.warning(f"{self.log_prefix} Could not determine HV polarity capability for {device_id}. Proceeding with caution.")
             elif target_v_numeric > 0 and is_positive_capable is False:
                  raise AmptekMCAError(f"Device {device_id} is configured for negative HV polarity, cannot set positive target {target_v_numeric}V.")
             elif target_v_numeric < 0 and is_positive_capable is True:
@@ -1579,14 +1578,14 @@ class AmptekMCA():
                 try:
                     current_v = float(current_hv_str)
                 except ValueError:
-                    self.logger.warning(f"{LOG_PREFIX} Could not parse current HV value '{current_hv_str}', assuming 0V.")
+                    self.logger.warning(f"{self.log_prefix} Could not parse current HV value '{current_hv_str}', assuming 0V.")
                     current_v = 0.0
 
         except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-             self.logger.error(f"{LOG_PREFIX} Failed to get initial status or current HV: {e}")
+             self.logger.error(f"{self.log_prefix} Failed to get initial status or current HV: {e}")
              raise AmptekMCAError(f"Failed to get initial status/HV before ramping: {e}")
 
-        self.logger.info(f"{LOG_PREFIX} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{' (then OFF)' if is_turning_off else ''}")
+        self.logger.info(f"{self.log_prefix} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{' (then OFF)' if is_turning_off else ''}")
 
         # --- Perform Ramping ---
         ramp_steps = []
@@ -1610,7 +1609,7 @@ class AmptekMCA():
 
         # Send intermediate steps without saving
         if ramp_steps:
-             self.logger.info(f"{LOG_PREFIX} Ramping HV via {len(ramp_steps)} steps...")
+             self.logger.info(f"{self.log_prefix} Ramping HV via {len(ramp_steps)} steps...")
              for i, step_v in enumerate(ramp_steps):
                  # Send all steps except the very last one without saving
                  is_final_numeric_step = (i == len(ramp_steps) - 1)
@@ -1619,35 +1618,35 @@ class AmptekMCA():
                  should_save_this_step = is_final_numeric_step and save_to_flash
 
                  step_config = {'HVSE': step_v}
-                 self.logger.debug(f"{LOG_PREFIX} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={step_v} (Save={should_save_this_step})")
+                 self.logger.debug(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={step_v} (Save={should_save_this_step})")
                  try:
                       # Use internal method with save_to_flash control
                       self.send_configuration(step_config, save_to_flash=should_save_this_step)
                       time.sleep(delay_sec)
                  except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                      self.logger.error(f"{LOG_PREFIX} Error during HV ramp at step HVSE={step_v}: {e}")
+                      self.logger.error(f"{self.log_prefix} Error during HV ramp at step HVSE={step_v}: {e}")
                       raise AmptekMCAError(f"Error during HV ramp at step HVSE={step_v}: {e}") # Abort ramp on error
 
         # Send the final "OFF" command if requested, saving state
         if is_turning_off:
-             self.logger.info(f"{LOG_PREFIX} Sending final HVSE=OFF command...")
+             self.logger.info(f"{self.log_prefix} Sending final HVSE=OFF command...")
              try:
                   self.send_configuration(final_command_dict, save_to_flash=True)
              except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                  self.logger.error(f"{LOG_PREFIX} Error sending final HVSE=OFF command: {e}")
+                  self.logger.error(f"{self.log_prefix} Error sending final HVSE=OFF command: {e}")
                   raise AmptekMCAError(f"Error sending final HVSE=OFF command: {e}")
         elif not ramp_steps and not math.isclose(current_v, target_v_numeric):
              # If no ramp steps were needed but target isn't current, send final target now
-             self.logger.info(f"{LOG_PREFIX} Setting final HVSE target: {final_command_dict}")
+             self.logger.info(f"{self.log_prefix} Setting final HVSE target: {final_command_dict}")
              try:
                   self.send_configuration(final_command_dict, save_to_flash=True)
              except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                  self.logger.error(f"{LOG_PREFIX} Error setting final HVSE target: {e}")
+                  self.logger.error(f"{self.log_prefix} Error setting final HVSE target: {e}")
                   raise AmptekMCAError(f"Error setting final HVSE target: {e}")
         elif not is_turning_off and ramp_steps:
-             self.logger.info(f"{LOG_PREFIX} HV ramp completed. Final target HVSE={final_command_dict['HVSE']} set and saved.")
+             self.logger.info(f"{self.log_prefix} HV ramp completed. Final target HVSE={final_command_dict['HVSE']} set and saved.")
         else:
-             self.logger.info(f"{LOG_PREFIX} HV already at target voltage.")
+             self.logger.info(f"{self.log_prefix} HV already at target voltage.")
 
     def _parse_configuration_file(self, config_file_path: Path, device_type: Optional[str] = None) -> OrderedDictType[str, str]:
         """
@@ -1690,29 +1689,29 @@ class AmptekMCA():
                             if key and value: # Ensure key and value are not empty
                                 parsed_config[key] = value
                             elif not key:
-                                self.logger.debug(f"{LOG_PREFIX} Skipping empty key in part '{part}' in file {config_file_path.name}, line {line_num}")
+                                self.logger.debug(f"{self.log_prefix} Skipping empty key in part '{part}' in file {config_file_path.name}, line {line_num}")
                             elif not value:
-                                self.logger.debug(f"{LOG_PREFIX} Skipping empty value in part '{part}' in file {config_file_path.name}, line {line_num}")
+                                self.logger.debug(f"{self.log_prefix} Skipping empty value in part '{part}' in file {config_file_path.name}, line {line_num}")
                         else:
                             # Handle parts without '=' if necessary
-                            self.logger.warning(f"{LOG_PREFIX} Skipping malformed part '{part}' (no '=') in file {config_file_path.name}, line {line_num}")
+                            self.logger.warning(f"{self.log_prefix} Skipping malformed part '{part}' (no '=') in file {config_file_path.name}, line {line_num}")
 
             # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
             if parsed_config and 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
                 device_name = device_type if device_type else 'unknown device'
-                self.logger.debug(f"{LOG_PREFIX} Fixing RTDS value in config file '{config_file_path.name}' for device '{device_name}' from 0 to 2.")
+                self.logger.debug(f"{self.log_prefix} Fixing RTDS value in config file '{config_file_path.name}' for device '{device_name}' from 0 to 2.")
                 parsed_config['RTDS'] = '2'
                 
             # Remove unsupported parameters
             if parsed_config and device_type:
-                self.logger.debug(f"{LOG_PREFIX} Removing unsupported parameters from config file '{config_file_path.name}' for device '{device_type}'...")
+                self.logger.debug(f"{self.log_prefix} Removing unsupported parameters from config file '{config_file_path.name}' for device '{device_type}'...")
                 parsed_config = {k: v for k, v in parsed_config.items() if self.parameter_is_supported(k, device_type)}
                     
         except IOError as e:
-            self.logger.error(f"{LOG_PREFIX} Error reading config file {config_file_path}: {e}")
+            self.logger.error(f"{self.log_prefix} Error reading config file {config_file_path}: {e}")
             raise
         except Exception as e:
-            self.logger.error(f"{LOG_PREFIX} Error parsing config file {config_file_path}: {e}")
+            self.logger.error(f"{self.log_prefix} Error parsing config file {config_file_path}: {e}")
             raise ValueError(f"Error parsing configuration file {config_file_path}: {e}")
             
         return parsed_config
@@ -1740,30 +1739,30 @@ class AmptekMCA():
 
         # 2. Send the rest of the configuration
         if config_to_apply: # Check if there are other parameters left
-            self.logger.info(f"{LOG_PREFIX} Sending main configuration parameters ({len(config_to_apply)} items)...")
+            self.logger.info(f"{self.log_prefix} Sending main configuration parameters ({len(config_to_apply)} items)...")
             try:
                 self.send_configuration(config_to_apply, save_to_flash=save_to_flash)
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                self.logger.error(f"{LOG_PREFIX} Error sending main configuration part: {e}")
+                self.logger.error(f"{self.log_prefix} Error sending main configuration part: {e}")
                 raise # Re-raise the exception
         else:
-            self.logger.info(f"{LOG_PREFIX} No main configuration parameters to send (only HVSE was present or config empty).")
+            self.logger.info(f"{self.log_prefix} No main configuration parameters to send (only HVSE was present or config empty).")
 
         # 3. Apply HVSE using the ramping method (if it was present and not skipped)
         if target_hv_value is not None and not skip_hvse:
-            self.logger.info(f"{LOG_PREFIX} Applying HVSE setting separately: {target_hv_value}")
+            self.logger.info(f"{self.log_prefix} Applying HVSE setting separately: {target_hv_value}")
             try:
                 # Call the ramping method - set_HVSE handles all parsing and validation
                 self.set_HVSE(target_hv_value, save_to_flash=save_to_flash) # Uses default step/delay
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                 self.logger.error(f"{LOG_PREFIX} Error applying HVSE setting '{target_hv_value}': {e}")
+                 self.logger.error(f"{self.log_prefix} Error applying HVSE setting '{target_hv_value}': {e}")
                  raise # Re-raise the exception
         elif target_hv_value is not None and skip_hvse:
-             self.logger.info(f"{LOG_PREFIX} HVSE parameter found in configuration ({target_hv_value}) but skipped due to skip_hvse=True.")
+             self.logger.info(f"{self.log_prefix} HVSE parameter found in configuration ({target_hv_value}) but skipped due to skip_hvse=True.")
         else:
-             self.logger.info(f"{LOG_PREFIX} No HVSE parameter found in the configuration to apply separately.")
+             self.logger.info(f"{self.log_prefix} No HVSE parameter found in the configuration to apply separately.")
 
-        self.logger.info(f"{LOG_PREFIX} Configuration {source_description} applied successfully.")
+        self.logger.info(f"{self.log_prefix} Configuration {source_description} applied successfully.")
 
     def get_available_default_configurations_with_content(self) -> Dict[str, Dict[str, OrderedDictType[str, str]]]:
         """
@@ -1805,27 +1804,27 @@ class AmptekMCA():
                 }
             }
         """
-        self.logger.info(f"{LOG_PREFIX} Searching for default configurations...")
+        self.logger.info(f"{self.log_prefix} Searching for default configurations...")
         try:
             script_dir = Path(__file__).parent
         except NameError:
              # Fallback to current working directory if __file__ is not defined
              script_dir = Path.cwd()
-             self.logger.warning(f"{LOG_PREFIX} __file__ not defined, using current working directory {script_dir} as base.")
+             self.logger.warning(f"{self.log_prefix} __file__ not defined, using current working directory {script_dir} as base.")
 
         default_dir = script_dir / 'default'
 
         available_configs: Dict[str, Dict[str, OrderedDictType[str, str]]] = {}
 
         if not default_dir.is_dir():
-            self.logger.warning(f"{LOG_PREFIX} 'default' directory not found at {default_dir}")
+            self.logger.warning(f"{self.log_prefix} 'default' directory not found at {default_dir}")
             return available_configs
 
         # Iterate through subdirectories in the 'default' folder (Device Types)
         for device_dir in default_dir.iterdir():
             if device_dir.is_dir():
                 device_type = device_dir.name # e.g., "DP5", "PX5"
-                self.logger.debug(f"{LOG_PREFIX} Found device type folder: {device_type}")
+                self.logger.debug(f"{self.log_prefix} Found device type folder: {device_type}")
                 device_configs: Dict[str, OrderedDictType[str, str]] = {}
 
                 # Iterate through .txt files in the device type subfolder
@@ -1840,20 +1839,20 @@ class AmptekMCA():
                                 # Save
                                 device_configs[config_name] = parsed_config
                             else:
-                                self.logger.warning(f"{LOG_PREFIX} No valid configuration pairs found in {config_file.name}")
+                                self.logger.warning(f"{self.log_prefix} No valid configuration pairs found in {config_file.name}")
 
                         except (IOError, ValueError) as e:
-                             self.logger.error(f"{LOG_PREFIX} Error loading config file {config_file.name}: {e}")
+                             self.logger.error(f"{self.log_prefix} Error loading config file {config_file.name}: {e}")
                         except Exception as e:
-                             self.logger.error(f"{LOG_PREFIX} Unexpected error processing config file {config_file.name}: {e}")
+                             self.logger.error(f"{self.log_prefix} Unexpected error processing config file {config_file.name}: {e}")
 
                 if device_configs:
                     available_configs[device_type] = device_configs
 
         if not available_configs:
-             self.logger.info(f"{LOG_PREFIX} No default configurations found in 'default' directory structure.")
+             self.logger.info(f"{self.log_prefix} No default configurations found in 'default' directory structure.")
         else:
-             self.logger.info(f"{LOG_PREFIX} Found default configurations for devices: {list(available_configs.keys())}")
+             self.logger.info(f"{self.log_prefix} Found default configurations for devices: {list(available_configs.keys())}")
 
         return available_configs
 
@@ -1893,7 +1892,7 @@ class AmptekMCA():
 
         except Exception as e:
             # Catch errors from the underlying method call
-            self.logger.error(f"{LOG_PREFIX} Error retrieving configurations with content: {e}")
+            self.logger.error(f"{self.log_prefix} Error retrieving configurations with content: {e}")
             # Return empty dict in case of error during retrieval/parsing
             return {}
 
@@ -1913,30 +1912,30 @@ class AmptekMCA():
             with values potentially converted to int/float where possible.
             Returns None if the file doesn't exist or couldn't be parsed.
         """
-        self.logger.info(f"{LOG_PREFIX} Loading configuration from file '{config_file_path}'...")
+        self.logger.info(f"{self.log_prefix} Loading configuration from file '{config_file_path}'...")
         
         config_path = Path(config_file_path)
         
         if not config_path.exists():
-            self.logger.error(f"{LOG_PREFIX} Configuration file not found: {config_file_path}")
+            self.logger.error(f"{self.log_prefix} Configuration file not found: {config_file_path}")
             return None
             
         if not config_path.is_file():
-            self.logger.error(f"{LOG_PREFIX} Path is not a file: {config_file_path}")
+            self.logger.error(f"{self.log_prefix} Path is not a file: {config_file_path}")
             return None
             
         try:
             parsed_config = self._parse_configuration_file(config_path, device_type)
             
             if not parsed_config:
-                self.logger.warning(f"{LOG_PREFIX} No valid configuration pairs found in {config_file_path}")
+                self.logger.warning(f"{self.log_prefix} No valid configuration pairs found in {config_file_path}")
                 return None
                 
-            self.logger.info(f"{LOG_PREFIX} Configuration read successfully from '{config_file_path}' ({len(parsed_config)} parameters).")
+            self.logger.info(f"{self.log_prefix} Configuration read successfully from '{config_file_path}' ({len(parsed_config)} parameters).")
             return parsed_config
             
         except (IOError, ValueError) as e:
-            self.logger.error(f"{LOG_PREFIX} Failed to load configuration from '{config_file_path}': {e}")
+            self.logger.error(f"{self.log_prefix} Failed to load configuration from '{config_file_path}': {e}")
             return None
 
     def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False) -> None:
@@ -1962,7 +1961,7 @@ class AmptekMCA():
             ValueError: If configuration values are invalid.
             FileNotFoundError: If the configuration file doesn't exist.
         """
-        self.logger.info(f"{LOG_PREFIX} Applying configuration from file '{config_file_path}'...")
+        self.logger.info(f"{self.log_prefix} Applying configuration from file '{config_file_path}'...")
         
         # 1. Load the configuration from file
         config_to_apply = self.get_configuration_from_file(config_file_path, device_type)
@@ -1996,7 +1995,7 @@ class AmptekMCA():
             Returns None if the device type folder or the configuration file is not found,
             or if the file could not be parsed correctly by the underlying method.
         """
-        self.logger.info(f"{LOG_PREFIX} Getting default configuration '{config_name}' for device '{device_type}'...")
+        self.logger.info(f"{self.log_prefix} Getting default configuration '{config_name}' for device '{device_type}'...")
 
         # Get all available default configurations
         all_configs = self.get_available_default_configurations_with_content()
@@ -2004,16 +2003,16 @@ class AmptekMCA():
         # Look up the specific device type
         device_configs = all_configs.get(device_type)
         if device_configs is None:
-            self.logger.warning(f"{LOG_PREFIX} No default configurations found for device type '{device_type}'.")
+            self.logger.warning(f"{self.log_prefix} No default configurations found for device type '{device_type}'.")
             return None
 
         # Look up the specific configuration name
         specific_config = device_configs.get(config_name)
         if specific_config is None:
-            self.logger.warning(f"{LOG_PREFIX} Default configuration '{config_name}' not found for device type '{device_type}'.")
+            self.logger.warning(f"{self.log_prefix} Default configuration '{config_name}' not found for device type '{device_type}'.")
             return None
 
-        self.logger.info(f"{LOG_PREFIX} Default configuration '{config_name}' for '{device_type}' retrieved.")
+        self.logger.info(f"{self.log_prefix} Default configuration '{config_name}' for '{device_type}' retrieved.")
         return specific_config
 
     def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash = False, skip_hvse = False) -> None:
@@ -2039,7 +2038,7 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK.
             ValueError: If configuration values are invalid.
         """
-        self.logger.info(f"{LOG_PREFIX} Applying default configuration '{config_name}' for device '{device_type}'...")
+        self.logger.info(f"{self.log_prefix} Applying default configuration '{config_name}' for device '{device_type}'...")
 
         # 1. Get the target default configuration dictionary
         config_to_apply = self.get_default_configuration(device_type, config_name)
@@ -2073,16 +2072,16 @@ class AmptekMCA():
         if time_between_checks <= 0:
             raise ValueError("time_between_checks must be positive and non-zero.")
 
-        self.logger.info(f"{LOG_PREFIX} Waiting for MCA to close (polling every {time_between_checks}s)...")
+        self.logger.info(f"{self.log_prefix} Waiting for MCA to close (polling every {time_between_checks}s)...")
 
         # First, check if MCA is already closed
         try:
             initial_status = self.get_status(silent=True)
             if not initial_status['status_flags']['mca_enabled']:
-                self.logger.info(f"{LOG_PREFIX} MCA is already closed.")
+                self.logger.info(f"{self.log_prefix} MCA is already closed.")
                 return
         except (AmptekMCAError, AmptekMCAAckError) as e:
-            self.logger.exception(f"{LOG_PREFIX} Failed to get initial MCA status")
+            self.logger.exception(f"{self.log_prefix} Failed to get initial MCA status")
             raise # Re-raise the error
 
         # Check preset conditions
@@ -2094,7 +2093,7 @@ class AmptekMCA():
         try:
             preset_config = self.read_configuration(presets_to_check)
         except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-            self.logger.exception(f"{LOG_PREFIX} Failed to read preset configuration")
+            self.logger.exception(f"{self.log_prefix} Failed to read preset configuration")
             raise AmptekMCAError("Failed to read preset configuration before waiting")
 
         any_preset_active = False
@@ -2109,34 +2108,34 @@ class AmptekMCA():
                 except ValueError:
                     # If it's not 'OFF' and not convertible to float (or is non-zero int), consider it active
                     # This should not happen
-                    self.logger.warning(f"{LOG_PREFIX} Preset {preset_cmd} has non-numeric value '{value_str}', assuming it's active.")
+                    self.logger.warning(f"{self.log_prefix} Preset {preset_cmd} has non-numeric value '{value_str}', assuming it's active.")
                     any_preset_active = True
                     break
 
         # If MCA is currently enabled but no presets are active, warn and return
         if not any_preset_active:
-            self.logger.warning(f"{LOG_PREFIX} MCA is enabled, but no active preset condition (PRET/PRER/PREC/PREL) found.")
-            self.logger.warning(f"{LOG_PREFIX} wait_until_mca_is_closed() will return immediately to avoid potential infinite loop.")
+            self.logger.warning(f"{self.log_prefix} MCA is enabled, but no active preset condition (PRET/PRER/PREC/PREL) found.")
+            self.logger.warning(f"{self.log_prefix} wait_until_mca_is_closed() will return immediately to avoid potential infinite loop.")
             return
 
         # Start polling loop only if at least one preset is active
-        self.logger.debug(f"{LOG_PREFIX} At least one preset condition is active. Starting polling loop...")
+        self.logger.debug(f"{self.log_prefix} At least one preset condition is active. Starting polling loop...")
         while True:
             try:
                 current_status = self.get_status(silent=True)
                 if not current_status['status_flags']['mca_enabled']:
-                    self.logger.info(f"{LOG_PREFIX} MCA is now closed.")
+                    self.logger.info(f"{self.log_prefix} MCA is now closed.")
                     break # Exit the loop
 
-                self.logger.debug(f"{LOG_PREFIX} MCA still enabled, waiting...")
+                self.logger.debug(f"{self.log_prefix} MCA still enabled, waiting...")
                 time.sleep(time_between_checks)
 
             except (AmptekMCAError, AmptekMCAAckError) as e:
-                self.logger.exception(f"{LOG_PREFIX} Error polling MCA status during wait")
+                self.logger.exception(f"{self.log_prefix} Error polling MCA status during wait")
                 raise # Re-raise the error, interrupting the wait
 
             except KeyboardInterrupt:
-                self.logger.warning(f"{LOG_PREFIX} Wait interrupted by user.")
+                self.logger.warning(f"{self.log_prefix} Wait interrupted by user.")
                 raise # Allow interruption to propagate
 
     def configure_acquisition(self,
@@ -2182,17 +2181,17 @@ class AmptekMCA():
         if gain is not None: params_to_validate['GAIN'] = gain
 
         if not params_to_validate:
-            self.logger.info(f"{LOG_PREFIX} No acquisition parameters provided to configure.")
+            self.logger.info(f"{self.log_prefix} No acquisition parameters provided to configure.")
             return
 
-        self.logger.info(f"{LOG_PREFIX} Validating and configuring acquisition parameters: {params_to_validate} (save={save_to_flash})")
+        self.logger.info(f"{self.log_prefix} Validating and configuring acquisition parameters: {params_to_validate} (save={save_to_flash})")
 
         # --- Get parameter metadata for validation ---
         try:
             # Fetch info only for parameters actually provided
             param_info = self.get_parameters_info(list(params_to_validate.keys()))
         except (AmptekMCAError, AmptekMCAAckError) as e:
-             self.logger.error(f"{LOG_PREFIX} Failed to get parameter info for validation: {e}")
+             self.logger.error(f"{self.log_prefix} Failed to get parameter info for validation: {e}")
              raise AmptekMCAError(f"Failed to get parameter info for validation: {e}")
 
 
@@ -2220,7 +2219,7 @@ class AmptekMCA():
                  # Propagate error from get_parameters_info
                  raise AmptekMCAError(f"Error retrieving info for {command}: {info['error']}")
             if not info.get("supported"):
-                 self.logger.warning(f"{LOG_PREFIX} Parameter {command} is not supported by {self.get_model()}. Skipping.")
+                 self.logger.warning(f"{self.log_prefix} Parameter {command} is not supported by {self.get_model()}. Skipping.")
                  continue # Skip unsupported parameters
 
             # --- Perform Validation ---
@@ -2258,21 +2257,21 @@ class AmptekMCA():
                 if formatted_value:
                     # Special check for PREL applicability
                     if command == 'PREL' and self.get_model() != 'MCA8000D':
-                        self.logger.warning(f"{LOG_PREFIX} PREL specified ({value}) but device model is '{self.get_model()}'. PREL command will be skipped.")
+                        self.logger.warning(f"{self.log_prefix} PREL specified ({value}) but device model is '{self.get_model()}'. PREL command will be skipped.")
                     else:
                         config_dict[command] = formatted_value
             else:
                 # If validation failed, log the issue
-                self.logger.warning(f"{LOG_PREFIX} Validation failed for {command}: {value}. Skipping this parameter.")
+                self.logger.warning(f"{self.log_prefix} Validation failed for {command}: {value}. Skipping this parameter.")
 
         # --- Send configuration ---
         if not config_dict:
-            self.logger.warning(f"{LOG_PREFIX} No valid acquisition parameters provided to configure after validation.")
+            self.logger.warning(f"{self.log_prefix} No valid acquisition parameters provided to configure after validation.")
             return
 
-        self.logger.info(f"{LOG_PREFIX} Validation passed. Sending configuration...")
+        self.logger.info(f"{self.log_prefix} Validation passed. Sending configuration...")
         self.send_configuration(config_dict, save_to_flash=save_to_flash)
-        self.logger.info(f"{LOG_PREFIX} Acquisition configuration sent.")
+        self.logger.info(f"{self.log_prefix} Acquisition configuration sent.")
 
     def acquire_spectrum(self,
                          channels: Optional[int] = None,
@@ -2316,20 +2315,20 @@ class AmptekMCA():
             AmptekMCAAckError: If the device returns an error ACK during any step.
             ValueError: If any provided configuration parameter value is invalid.
         """
-        self.logger.info(f"{LOG_PREFIX} Starting automated spectrum acquisition sequence...")
+        self.logger.info(f"{self.log_prefix} Starting automated spectrum acquisition sequence...")
 
         try:
             # 1. Ensure MCA is closed first
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Disabling MCA (if enabled)...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Disabling MCA (if enabled)...")
             self.disable_mca()
             time.sleep(0.1) # Brief pause after disable command
 
             # 2. Clear spectrum
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Clearing spectrum...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Clearing spectrum...")
             self.clear_spectrum()
 
             # 3. Configure parameters (configure_acquisition handles the case where all params are None)
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Applying provided configuration parameters (if any)...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Applying provided configuration parameters (if any)...")
             self.configure_acquisition(
                 channels=channels,
                 preset_acq_time=preset_acq_time,
@@ -2341,29 +2340,29 @@ class AmptekMCA():
             )
 
             # 4. Open MCA
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Enabling MCA...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Enabling MCA...")
             self.enable_mca()
 
             # 5. Wait for MCA to close (based on configured presets)
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Waiting for MCA to close...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Waiting for MCA to close...")
             self.wait_until_mca_is_closed(time_between_checks=time_between_checks)
 
             # 6. Get Spectrum
-            self.logger.debug(f"{LOG_PREFIX} acquire_spectrum: Getting final spectrum...")
+            self.logger.debug(f"{self.log_prefix} acquire_spectrum: Getting final spectrum...")
             spectrum = self.get_spectrum()
 
-            self.logger.info(f"{LOG_PREFIX} Automated spectrum acquisition sequence completed successfully.")
+            self.logger.info(f"{self.log_prefix} Automated spectrum acquisition sequence completed successfully.")
             # 7. Return Spectrum
             return spectrum
 
         except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-            self.logger.error(f"{LOG_PREFIX} Error during automated acquisition sequence: {e}")
+            self.logger.error(f"{self.log_prefix} Error during automated acquisition sequence: {e}")
             # Attempt to disable MCA in case of error during acquisition/wait
             try:
-                self.logger.warning(f"{LOG_PREFIX} Attempting to disable MCA due to error during acquisition.")
+                self.logger.warning(f"{self.log_prefix} Attempting to disable MCA due to error during acquisition.")
                 self.disable_mca()
             except Exception as disable_e:
-                 self.logger.error(f"{LOG_PREFIX} Failed to disable MCA after error: {disable_e}")
+                 self.logger.error(f"{self.log_prefix} Failed to disable MCA after error: {disable_e}")
             raise # Re-raise the original error
 
     # --- Static Methods ---
