@@ -54,13 +54,14 @@ The Amptek MCA library relies on `libusb` for generic USB access to communicate 
         python -c "from cfis_interfaces import AmptekMCA; AmptekMCA.install_libusb()"
         ```
     2.  Download Zadig from the official website: [https://zadig.akeo.ie/](https://zadig.akeo.ie/).
-    3.  Connect the Amptek device to your computer.
+    3.  Connect the Amptek device to your computer. **If using a hub**, first connect the USB hub to your computer, then connect the Amptek device to the hub.
     4.  Open Zadig **as Administrator** (right-click on the executable and select "Run as administrator").
-    5.  Go to `Options > List All Devices`.
-    6.  In the Zadig window, select the Amptek device (VID `10C4`, PID `842A`) and choose the `WinUSB` driver from the target driver list.
-    7.  Click the `Install Driver` (or `Replace Driver`) button to install the driver.
-    8.  Repeat steps 2-7 for any additional Amptek devices you want to connect.
-    9.  Connect the Amptek devices **always** to the same USB port.
+    5.  **If using a USB hub**, make sure to **deselect** `Options > Ignore Hubs or Composite Parents` to ensure the device is properly detected.
+    6.  Go to `Options > List All Devices`.
+    7.  In the Zadig window, select the Amptek device (VID `10C4`, PID `842A`) and choose the `WinUSB` driver from the target driver list.
+    8.  Click the `Install Driver` (or `Replace Driver`) button to install the driver.
+    9.  Repeat steps 3-8 for any additional Amptek devices you want to connect.
+    10. Connect the Amptek devices **always** to the same USB port.
 * Linux:
     1.  Open the terminal and run the built-in method to install the `libusb` dependency:
         ```python
