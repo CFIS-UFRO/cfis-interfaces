@@ -41,7 +41,7 @@ def main():
         print("\n--- Using Context Manager ---")
         with multi_mca:
             # Get device models
-            models = multi_mca.get_models()
+            models = multi_mca.get_model()
             print(f"Device models: {models}")
             
             # Get status from all devices
@@ -80,7 +80,7 @@ def main():
         print("\n--- Manual Connection Management ---")
         
         # Connect to all devices
-        connect_results = multi_mca.connect_all()
+        connect_results = multi_mca.connect()
         print(f"Connect results: {connect_results}")
         
         # Access individual devices
@@ -112,14 +112,14 @@ def main():
         print(f"Default configuration results (DP5 only): {default_config_results}")
         
         # Disconnect all devices
-        multi_mca.disconnect_all()
+        multi_mca.disconnect()
         print("✅ Disconnected all devices")
         
     except Exception as e:
         print(f"❌ Error during operation: {e}")
         # Ensure cleanup
         try:
-            multi_mca.disconnect_all()
+            multi_mca.disconnect()
         except:
             pass
 

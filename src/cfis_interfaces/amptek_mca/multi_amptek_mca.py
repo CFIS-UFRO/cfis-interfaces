@@ -92,7 +92,7 @@ class MultiAmptekMCA:
         return self.mcas[index]
     
     # Connection methods
-    def connect_all(self) -> Dict[int, bool]:
+    def connect(self) -> Dict[int, bool]:
         """
         Connect to all discovered devices.
         
@@ -110,7 +110,7 @@ class MultiAmptekMCA:
                 results[i] = False
         return results
     
-    def disconnect_all(self) -> None:
+    def disconnect(self) -> None:
         """Disconnect from all devices."""
         for mca in self.mcas:
             try:
@@ -140,7 +140,7 @@ class MultiAmptekMCA:
                 results[i] = None
         return results
     
-    def get_models(self) -> Dict[int, str]:
+    def get_model(self) -> Dict[int, str]:
         """
         Get device models from all devices.
         
@@ -390,12 +390,12 @@ class MultiAmptekMCA:
     # Context manager support
     def __enter__(self):
         """Context manager entry."""
-        self.connect_all()
+        self.connect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
-        self.disconnect_all()
+        self.disconnect()
     
     def __len__(self):
         """Return number of devices."""
