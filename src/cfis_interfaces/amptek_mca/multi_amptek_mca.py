@@ -2,6 +2,7 @@
 import logging
 from typing import Optional, Dict, List, Any, Union
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # CFIS libraries
 from cfis_utils import UsbUtils, LoggerUtils, Spectrum
@@ -10,7 +11,7 @@ from cfis_utils import UsbUtils, LoggerUtils, Spectrum
 import usb.core
 
 # Local imports
-from .amptek_mca import AmptekMCA, AmptekMCAError, AmptekMCAAckError
+from .amptek_mca import AmptekMCA, AmptekMCAError
 
 # Logging prefix constant
 LOG_PREFIX = "[MultiAmptekMCA]"
@@ -330,7 +331,7 @@ class MultiAmptekMCA:
                          save_config_to_flash: bool = False,
                          time_between_checks: float = 1.0) -> Dict[int, Optional[Spectrum]]:
         """
-        Acquire spectrum from all connected devices.
+        Acquire spectrum from all connected devices in parallel.
         
         Args:
             channels: Number of channels for the spectrum
@@ -345,10 +346,9 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to Spectrum object (None if failed)
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
+        def _acquire_single_spectrum(device_index: int, mca: AmptekMCA):
             try:
-                results[i] = mca.acquire_spectrum(
+                spectrum = mca.acquire_spectrum(
                     channels=channels,
                     preset_acq_time=preset_acq_time,
                     preset_real_time=preset_real_time,
@@ -358,15 +358,25 @@ class MultiAmptekMCA:
                     save_config_to_flash=save_config_to_flash,
                     time_between_checks=time_between_checks
                 )
+                return device_index, spectrum
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to acquire spectrum from device {i}: {e}")
-                results[i] = None
+                    self.logger.error(f"{LOG_PREFIX}  Failed to acquire spectrum from device {device_index}: {e}")
+                return device_index, None
+        
+        results = {}
+        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
+            futures = [executor.submit(_acquire_single_spectrum, i, mca) for i, mca in enumerate(self.mcas)]
+            
+            for future in as_completed(futures):
+                device_index, spectrum = future.result()
+                results[device_index] = spectrum
+        
         return results
     
     def wait_until_mca_is_closed(self, time_between_checks: float = 1.0) -> Dict[int, bool]:
         """
-        Wait until MCA is closed on all devices.
+        Wait until MCA is closed on all devices in parallel.
         
         Args:
             time_between_checks: Time in seconds between status checks
@@ -374,15 +384,23 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
+        def _wait_single_mca(device_index: int, mca: AmptekMCA):
             try:
                 mca.wait_until_mca_is_closed(time_between_checks=time_between_checks)
-                results[i] = True
+                return device_index, True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Device {i} wait failed: {e}")
-                results[i] = False
+                    self.logger.error(f"{LOG_PREFIX}  Device {device_index} wait failed: {e}")
+                return device_index, False
+        
+        results = {}
+        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
+            futures = [executor.submit(_wait_single_mca, i, mca) for i, mca in enumerate(self.mcas)]
+            
+            for future in as_completed(futures):
+                device_index, success = future.result()
+                results[device_index] = success
+        
         return results
     
     def get_available_default_configurations(self) -> Dict[str, List[str]]:
