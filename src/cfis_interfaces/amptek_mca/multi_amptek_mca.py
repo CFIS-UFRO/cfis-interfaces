@@ -223,6 +223,47 @@ class MultiAmptekMCA:
                 results[i] = False
         return results
     
+    # High voltage control methods
+    def set_HVSE(self, device_type: Optional[str] = None, target_voltage: Union[float, int, str] = None, 
+                 step: float = 50.0, delay_sec: float = 0.5, save_to_flash: bool = False) -> Dict[int, bool]:
+        """
+        Set high voltage supply on connected devices of specified type in parallel.
+        
+        Args:
+            device_type: Device type to apply HVSE to. If None, applies to all devices.
+            target_voltage: The desired final voltage (float or int) or "OFF" (string)
+            step: The approximate voltage step size for ramping (default: 50.0 V)
+            delay_sec: The delay in seconds between sending each voltage step command (default: 0.5 s)
+            save_to_flash: If True, the final target voltage will be saved to flash
+            
+        Returns:
+            Dictionary mapping device index to success status (None = skipped)
+        """
+        def _set_hvse_single(device_index: int, mca: AmptekMCA):
+            try:
+                # Filter by device type if specified
+                if device_type is not None and mca.get_model() != device_type:
+                    if self.logger:
+                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {device_index} (type: {mca.get_model()}, target: {device_type})")
+                    return device_index, None  # Indicate skipped
+                    
+                mca.set_HVSE(target_voltage, step=step, delay_sec=delay_sec, save_to_flash=save_to_flash)
+                return device_index, True
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"{LOG_PREFIX}  Failed to set HVSE on device {device_index}: {e}")
+                return device_index, False
+        
+        results = {}
+        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
+            futures = [executor.submit(_set_hvse_single, i, mca) for i, mca in enumerate(self.mcas)]
+            
+            for future in as_completed(futures):
+                device_index, success = future.result()
+                results[device_index] = success
+        
+        return results
+    
     # Configuration methods
     def send_configuration(self, device_type: Optional[str] = None, config_dict: Dict[str, Any] = None, save_to_flash: bool = False) -> Dict[int, bool]:
         """
