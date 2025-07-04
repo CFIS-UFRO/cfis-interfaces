@@ -223,13 +223,13 @@ class MultiAmptekMCA:
         return results
     
     # Configuration methods
-    def send_configuration(self, config_dict: Dict[str, Any], device_type: Optional[str] = None, save_to_flash: bool = False) -> Dict[int, bool]:
+    def send_configuration(self, device_type: Optional[str] = None, config_dict: Dict[str, Any] = None, save_to_flash: bool = False) -> Dict[int, bool]:
         """
         Send configuration to connected devices of specified type.
         
         Args:
-            config_dict: Configuration dictionary
             device_type: Device type to apply configuration to. If None, applies to all devices.
+            config_dict: Configuration dictionary
             save_to_flash: Whether to save configuration to flash memory
             
         Returns:
@@ -286,14 +286,14 @@ class MultiAmptekMCA:
                 results[i] = False
         return results
     
-    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None,
+    def apply_configuration_from_file(self, device_type: Optional[str] = None, config_file_path: str = None,
                                     save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
         """
         Apply configuration from file to connected devices of specified type.
         
         Args:
-            config_file_path: Path to configuration file
             device_type: Device type to apply configuration to. If None, applies to all devices.
+            config_file_path: Path to configuration file
             save_to_flash: Whether to save to flash memory
             skip_hvse: Whether to skip HVSE parameter
             
