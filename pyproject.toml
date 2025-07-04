@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfis_interfaces"
-version= "v2025.07.02.02"
+version= "v2025.07.04.01"
 authors = [
   { name="Bryan Casanelli", email="bryancasanelli@gmail.com" },
 ]
@@ -13,9 +13,9 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { file="LICENSE" }
 dependencies = [
-"cfis-utils @ git+https://github.com/CFIS-UFRO/cfis-utils.git",
-"pyserial",
-"pyusb",
+    "git+https://github.com/CFIS-UFRO/cfis-utils.git",
+    "pyserial",
+    "pyusb"
 ]
 
 [project.urls]
