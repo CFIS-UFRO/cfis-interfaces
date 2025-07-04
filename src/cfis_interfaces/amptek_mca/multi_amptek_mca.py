@@ -339,17 +339,6 @@ class MultiAmptekMCA:
                 results[i] = False
         return results
     
-    # Static methods (delegated to AmptekMCA)
-    @staticmethod
-    def install_libusb(logger: Optional[logging.Logger] = None) -> None:
-        """Install libusb backend. Delegates to AmptekMCA."""
-        AmptekMCA.install_libusb(logger=logger)
-    
-    @staticmethod
-    def add_udev_rule(logger: Optional[logging.Logger] = None) -> None:
-        """Add udev rules. Delegates to AmptekMCA."""
-        AmptekMCA.add_udev_rule(logger=logger)
-    
     def get_available_default_configurations(self) -> Dict[str, List[str]]:
         """Get available default configurations. Delegates to AmptekMCA."""
         temp_mca = AmptekMCA(logger=self.logger, logger_name="TempAmptekMCA")
@@ -365,6 +354,17 @@ class MultiAmptekMCA:
         temp_mca = AmptekMCA(logger=self.logger, logger_name="TempAmptekMCA")
         return temp_mca.get_configuration_from_file(config_file_path, device_type=device_type)
     
+    # Static methods (delegated to AmptekMCA)
+    @staticmethod
+    def install_libusb(logger: Optional[logging.Logger] = None) -> None:
+        """Install libusb backend. Delegates to AmptekMCA."""
+        AmptekMCA.install_libusb(logger=logger)
+    
+    @staticmethod
+    def add_udev_rule(logger: Optional[logging.Logger] = None) -> None:
+        """Add udev rules. Delegates to AmptekMCA."""
+        AmptekMCA.add_udev_rule(logger=logger)
+
     # Context manager support
     def __enter__(self):
         """Context manager entry."""
