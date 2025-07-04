@@ -20,6 +20,8 @@ The library provides two main classes:
   - Parallel execution for time-consuming operations (spectrum acquisition, waiting for MCA close)
   - Device-type filtering for selective operations
 
+## Implementation Details
+
 It is implemented based on the official specifications found in the Amptek [Digital Products Programmer's Guide](https://www.amptek.com/-/media/ametekamptek/documents/resources/products/user-manuals/amptek-digital-products-programmers-guide-b3.pdf?la=en&revision=70db147d-b3c2-4d44-aaa2-374f648a4bc7).
 
 **Note:** Only the PX5 and PC5 devices were tested.
