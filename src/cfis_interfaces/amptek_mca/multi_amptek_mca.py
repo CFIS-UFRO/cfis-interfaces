@@ -223,12 +223,13 @@ class MultiAmptekMCA:
         return results
     
     # Configuration methods
-    def send_configuration(self, config_dict: Dict[str, Any], save_to_flash: bool = False) -> Dict[int, bool]:
+    def send_configuration(self, config_dict: Dict[str, Any], device_type: Optional[str] = None, save_to_flash: bool = False) -> Dict[int, bool]:
         """
-        Send configuration to all connected devices.
+        Send configuration to connected devices of specified type.
         
         Args:
             config_dict: Configuration dictionary
+            device_type: Device type to apply configuration to. If None, applies to all devices.
             save_to_flash: Whether to save configuration to flash memory
             
         Returns:
@@ -237,6 +238,13 @@ class MultiAmptekMCA:
         results = {}
         for i, mca in enumerate(self.mcas):
             try:
+                # Filter by device type if specified
+                if device_type is not None and mca.get_model() != device_type:
+                    if self.logger:
+                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
+                    results[i] = None  # Indicate skipped
+                    continue
+                    
                 mca.send_configuration(config_dict, save_to_flash=save_to_flash)
                 results[i] = True
             except Exception as e:
@@ -248,20 +256,27 @@ class MultiAmptekMCA:
     def apply_default_configuration(self, device_type: str, config_name: str, 
                                   save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
         """
-        Apply default configuration to all connected devices.
+        Apply default configuration to connected devices of specified type.
         
         Args:
-            device_type: Device type string
+            device_type: Device type string (only devices of this type will be configured)
             config_name: Configuration name
             save_to_flash: Whether to save to flash memory
             skip_hvse: Whether to skip HVSE parameter
             
         Returns:
-            Dictionary mapping device index to success status
+            Dictionary mapping device index to success status (None = skipped)
         """
         results = {}
         for i, mca in enumerate(self.mcas):
             try:
+                # Only apply to devices of matching type
+                if mca.get_model() != device_type:
+                    if self.logger:
+                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
+                    results[i] = None  # Indicate skipped
+                    continue
+                    
                 mca.apply_default_configuration(device_type, config_name, 
                                               save_to_flash=save_to_flash, skip_hvse=skip_hvse)
                 results[i] = True
@@ -274,20 +289,27 @@ class MultiAmptekMCA:
     def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None,
                                     save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
         """
-        Apply configuration from file to all connected devices.
+        Apply configuration from file to connected devices of specified type.
         
         Args:
             config_file_path: Path to configuration file
-            device_type: Optional device type for validation
+            device_type: Device type to apply configuration to. If None, applies to all devices.
             save_to_flash: Whether to save to flash memory
             skip_hvse: Whether to skip HVSE parameter
             
         Returns:
-            Dictionary mapping device index to success status
+            Dictionary mapping device index to success status (None = skipped)
         """
         results = {}
         for i, mca in enumerate(self.mcas):
             try:
+                # Filter by device type if specified
+                if device_type is not None and mca.get_model() != device_type:
+                    if self.logger:
+                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
+                    results[i] = None  # Indicate skipped
+                    continue
+                    
                 mca.apply_configuration_from_file(config_file_path, device_type=device_type,
                                                 save_to_flash=save_to_flash, skip_hvse=skip_hvse)
                 results[i] = True

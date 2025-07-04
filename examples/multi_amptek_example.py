@@ -92,14 +92,24 @@ def main():
             device_0.clear_spectrum()
             print("✅ Cleared spectrum on device 0 individually")
         
-        # Apply configuration to all devices
+        # Apply configuration to devices of specific type
         config = {
             'MCAS': '8192',  # Number of channels
             'MCAC': '8192',  # Channel count
             'TPEA': '6.4',   # Peaking time
         }
+        
+        # Apply to all devices
         config_results = multi_mca.send_configuration(config, save_to_flash=False)
-        print(f"Configuration results: {config_results}")
+        print(f"Configuration results (all devices): {config_results}")
+        
+        # Apply only to DP5 devices (if any)
+        config_results_dp5 = multi_mca.send_configuration(config, device_type="DP5", save_to_flash=False)
+        print(f"Configuration results (DP5 only): {config_results_dp5}")
+        
+        # Apply default configuration to DP5 devices only
+        default_config_results = multi_mca.apply_default_configuration("DP5", "SDD Default DP5", save_to_flash=False)
+        print(f"Default configuration results (DP5 only): {default_config_results}")
         
         # Disconnect all devices
         multi_mca.disconnect_all()
