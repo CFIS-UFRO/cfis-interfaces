@@ -155,10 +155,8 @@ print(f"Spectrum acquisition results: {spectra}")
 
 # --- Safely ramp down HV on all devices ---
 print("Setting HV to 0V on all devices...")
-# Note: This would be done through individual device access or a broadcast method
-for i in range(multi_amptek.count):
-    device = multi_amptek.get_device(i)
-    device.set_HVSE(0, save_to_flash=True)
+hv_results = multi_amptek.set_HVSE(target_voltage=0, save_to_flash=True)
+print(f"HV shutdown results: {hv_results}")
 
 print("Disconnecting from all devices...")
 multi_amptek.disconnect()
