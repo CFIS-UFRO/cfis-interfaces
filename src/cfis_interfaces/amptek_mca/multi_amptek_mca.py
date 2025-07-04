@@ -12,6 +12,9 @@ import usb.core
 # Local imports
 from .amptek_mca import AmptekMCA, AmptekMCAError, AmptekMCAAckError
 
+# Logging prefix constant
+LOG_PREFIX = "[MultiAmptekMCA]"
+
 
 class MultiAmptekMCA:
     """
@@ -41,7 +44,7 @@ class MultiAmptekMCA:
         self._discover_devices()
         
         if self.logger:
-            self.logger.info(f"[MultiAmptekMCA] Initialized with {self.device_count} device(s)")
+            self.logger.info(f"{LOG_PREFIX}  Initialized with {self.device_count} device(s)")
     
     def _discover_devices(self) -> None:
         """Discover all connected Amptek MCA devices and create instances."""
@@ -58,12 +61,12 @@ class MultiAmptekMCA:
             
             # Create AmptekMCA instance for each device found
             for i in range(self.device_count):
-                mca = AmptekMCA(logger=self.logger, device_index=i)
+                mca = AmptekMCA(logger=self.logger, device_index=i+1)
                 self.mcas.append(mca)
                 
         except Exception as e:
             if self.logger:
-                self.logger.error(f"[MultiAmptekMCA] Error discovering devices: {e}")
+                self.logger.error(f"{LOG_PREFIX}  Error discovering devices: {e}")
             raise AmptekMCAError(f"Failed to discover Amptek devices: {e}")
     
     @property
@@ -103,7 +106,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to connect device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to connect device {i}: {e}")
                 results[i] = False
         return results
     
@@ -114,7 +117,7 @@ class MultiAmptekMCA:
                 mca.disconnect()
             except Exception as e:
                 if self.logger:
-                    self.logger.warning(f"[MultiAmptekMCA] Error disconnecting device: {e}")
+                    self.logger.warning(f"{LOG_PREFIX}  Error disconnecting device: {e}")
     
     # Status methods
     def get_status(self, silent: bool = False) -> Dict[int, Dict[str, Any]]:
@@ -133,7 +136,7 @@ class MultiAmptekMCA:
                 results[i] = mca.get_status(silent=silent)
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to get status from device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to get status from device {i}: {e}")
                 results[i] = None
         return results
     
@@ -160,7 +163,7 @@ class MultiAmptekMCA:
                 results[i] = mca.get_spectrum()
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to get spectrum from device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to get spectrum from device {i}: {e}")
                 results[i] = None
         return results
     
@@ -178,7 +181,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to clear spectrum on device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to clear spectrum on device {i}: {e}")
                 results[i] = False
         return results
     
@@ -197,7 +200,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to enable MCA on device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to enable MCA on device {i}: {e}")
                 results[i] = False
         return results
     
@@ -215,7 +218,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to disable MCA on device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to disable MCA on device {i}: {e}")
                 results[i] = False
         return results
     
@@ -238,7 +241,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to send configuration to device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to send configuration to device {i}: {e}")
                 results[i] = False
         return results
     
@@ -264,7 +267,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to apply default config to device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to apply default config to device {i}: {e}")
                 results[i] = False
         return results
     
@@ -290,7 +293,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to apply config file to device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to apply config file to device {i}: {e}")
                 results[i] = False
         return results
     
@@ -311,7 +314,7 @@ class MultiAmptekMCA:
                 results[i] = mca.acquire_spectrum(**kwargs)
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Failed to acquire spectrum from device {i}: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Failed to acquire spectrum from device {i}: {e}")
                 results[i] = None
         return results
     
@@ -332,7 +335,7 @@ class MultiAmptekMCA:
                 results[i] = True
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"[MultiAmptekMCA] Device {i} wait failed: {e}")
+                    self.logger.error(f"{LOG_PREFIX}  Device {i} wait failed: {e}")
                 results[i] = False
         return results
     
