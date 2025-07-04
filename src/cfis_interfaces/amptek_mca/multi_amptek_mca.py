@@ -4,7 +4,7 @@ from typing import Optional, Dict, List, Any
 from collections import OrderedDict
 
 # CFIS libraries
-from cfis_utils import UsbUtils, Spectrum
+from cfis_utils import UsbUtils, LoggerUtils, Spectrum
 
 # Third-party libraries
 import usb.core
@@ -21,14 +21,19 @@ class MultiAmptekMCA:
     Provides broadcast methods that operate on all devices simultaneously.
     """
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
+    def __init__(self, 
+                 logger: Optional[logging.Logger] = None,
+                 logger_name: str = "MultiAmptekMCA",
+                 logger_level: int = logging.INFO):
         """
         Initialize MultiAmptekMCA by discovering all connected Amptek devices.
         
         Args:
-            logger: Optional logger instance. If None, each AmptekMCA instance will create its own.
+            logger: Optional logger instance. If None, a new logger will be created.
+            logger_name: Name for the new logger. Defaults to "MultiAmptekMCA".
+            logger_level: Logging level for the new logger. Defaults to logging.INFO.
         """
-        self.logger = logger
+        self.logger = logger if logger else LoggerUtils.get_logger(logger_name, level=logger_level)
         self.mcas: List[AmptekMCA] = []
         self.device_count = 0
         
@@ -345,21 +350,21 @@ class MultiAmptekMCA:
     @staticmethod
     def get_available_default_configurations(logger: Optional[logging.Logger] = None) -> Dict[str, List[str]]:
         """Get available default configurations. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger)
+        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
         return temp_mca.get_available_default_configurations()
     
     @staticmethod
     def get_default_configuration(device_type: str, config_name: str, 
                                 logger: Optional[logging.Logger] = None):
         """Get default configuration. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger)
+        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
         return temp_mca.get_default_configuration(device_type, config_name)
     
     @staticmethod
     def get_configuration_from_file(config_file_path: str, device_type: Optional[str] = None,
                                   logger: Optional[logging.Logger] = None):
         """Get configuration from file. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger)
+        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
         return temp_mca.get_configuration_from_file(config_file_path, device_type=device_type)
     
     # Context manager support
