@@ -350,24 +350,19 @@ class MultiAmptekMCA:
         """Add udev rules. Delegates to AmptekMCA."""
         AmptekMCA.add_udev_rule(logger=logger)
     
-    @staticmethod
-    def get_available_default_configurations(logger: Optional[logging.Logger] = None) -> Dict[str, List[str]]:
+    def get_available_default_configurations(self) -> Dict[str, List[str]]:
         """Get available default configurations. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
+        temp_mca = AmptekMCA(logger=self.logger, logger_name="TempAmptekMCA")
         return temp_mca.get_available_default_configurations()
     
-    @staticmethod
-    def get_default_configuration(device_type: str, config_name: str, 
-                                logger: Optional[logging.Logger] = None):
+    def get_default_configuration(self, device_type: str, config_name: str):
         """Get default configuration. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
+        temp_mca = AmptekMCA(logger=self.logger, logger_name="TempAmptekMCA")
         return temp_mca.get_default_configuration(device_type, config_name)
     
-    @staticmethod
-    def get_configuration_from_file(config_file_path: str, device_type: Optional[str] = None,
-                                  logger: Optional[logging.Logger] = None):
+    def get_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None):
         """Get configuration from file. Delegates to AmptekMCA."""
-        temp_mca = AmptekMCA(logger=logger, logger_name="TempAmptekMCA")
+        temp_mca = AmptekMCA(logger=self.logger, logger_name="TempAmptekMCA")
         return temp_mca.get_configuration_from_file(config_file_path, device_type=device_type)
     
     # Context manager support

@@ -114,21 +114,29 @@ def main():
             pass
 
 
-def example_static_methods():
-    """Example of using static methods that don't require device instances."""
-    print("\n=== Static Methods Example ===")
+def example_configuration_methods():
+    """Example of using configuration methods."""
+    print("\n=== Configuration Methods Example ===")
+    
+    # Create instance to use configuration methods
+    multi_mca = MultiAmptekMCA()
     
     # Get available default configurations
     try:
-        configs = MultiAmptekMCA.get_available_default_configurations()
+        configs = multi_mca.get_available_default_configurations()
         print(f"Available device types: {list(configs.keys())}")
         
         if 'DP5' in configs:
             print(f"DP5 configurations: {configs['DP5']}")
+            
+            # Get specific configuration
+            config = multi_mca.get_default_configuration('DP5', 'SDD Default DP5')
+            if config:
+                print(f"✅ Got DP5 configuration with {len(config)} parameters")
     except Exception as e:
         print(f"Failed to get configurations: {e}")
     
-    # Install libusb if needed
+    # Install libusb if needed (this one is still static)
     try:
         MultiAmptekMCA.install_libusb()
         print("✅ Libusb installation check completed")
@@ -138,4 +146,4 @@ def example_static_methods():
 
 if __name__ == "__main__":
     main()
-    example_static_methods()
+    example_configuration_methods()
