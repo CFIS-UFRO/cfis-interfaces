@@ -1,6 +1,6 @@
 # Standard libraries
 import logging
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Union
 from collections import OrderedDict
 
 # CFIS libraries
@@ -320,12 +320,27 @@ class MultiAmptekMCA:
         return results
     
     # High-level acquisition methods
-    def acquire_spectrum(self, **kwargs) -> Dict[int, Optional[Spectrum]]:
+    def acquire_spectrum(self,
+                         channels: Optional[int] = None,
+                         preset_acq_time: Optional[Union[float, str]] = None,
+                         preset_real_time: Optional[Union[float, str]] = None,
+                         preset_counts: Optional[Union[int, str]] = None,
+                         preset_live_time: Optional[Union[float, str]] = None,
+                         gain: Optional[float] = None,
+                         save_config_to_flash: bool = False,
+                         time_between_checks: float = 1.0) -> Dict[int, Optional[Spectrum]]:
         """
         Acquire spectrum from all connected devices.
         
         Args:
-            **kwargs: Arguments passed to AmptekMCA.acquire_spectrum()
+            channels: Number of channels for the spectrum
+            preset_acq_time: Acquisition time preset
+            preset_real_time: Real time preset
+            preset_counts: Counts preset
+            preset_live_time: Live time preset
+            gain: Gain setting
+            save_config_to_flash: Whether to save configuration to flash memory
+            time_between_checks: Time between status checks during acquisition
             
         Returns:
             Dictionary mapping device index to Spectrum object (None if failed)
@@ -333,7 +348,16 @@ class MultiAmptekMCA:
         results = {}
         for i, mca in enumerate(self.mcas):
             try:
-                results[i] = mca.acquire_spectrum(**kwargs)
+                results[i] = mca.acquire_spectrum(
+                    channels=channels,
+                    preset_acq_time=preset_acq_time,
+                    preset_real_time=preset_real_time,
+                    preset_counts=preset_counts,
+                    preset_live_time=preset_live_time,
+                    gain=gain,
+                    save_config_to_flash=save_config_to_flash,
+                    time_between_checks=time_between_checks
+                )
             except Exception as e:
                 if self.logger:
                     self.logger.error(f"{LOG_PREFIX}  Failed to acquire spectrum from device {i}: {e}")
