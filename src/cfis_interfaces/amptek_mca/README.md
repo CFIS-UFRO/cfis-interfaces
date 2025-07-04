@@ -2,6 +2,24 @@
 
 This library provides an interface to control the following Amptek MCA devices: DP5, PX5, DP5X, DP5G, and MCA8000D.
 
+## Available Classes
+
+The library provides two main classes:
+
+### AmptekMCA
+- **Purpose**: Control a single Amptek MCA device
+- **Use case**: When you need to work with one device at a time
+- **Features**: Full control over a single device including configuration, spectrum acquisition, and HV management
+
+### MultiAmptekMCA
+- **Purpose**: Control multiple Amptek MCA devices simultaneously
+- **Use case**: When you have multiple devices connected and need to coordinate operations across all of them
+- **Features**: 
+  - Automatic device discovery
+  - Broadcast operations to all devices
+  - Parallel execution for time-consuming operations (spectrum acquisition, waiting for MCA close)
+  - Device-type filtering for selective operations
+
 It is implemented based on the official specifications found in the Amptek [Digital Products Programmer's Guide](https://www.amptek.com/-/media/ametekamptek/documents/resources/products/user-manuals/amptek-digital-products-programmers-guide-b3.pdf?la=en&revision=70db147d-b3c2-4d44-aaa2-374f648a4bc7).
 
 **Note:** Only the PX5 and PC5 devices were tested.
@@ -58,7 +76,11 @@ The Amptek MCA library relies on `libusb` for generic USB access to communicate 
 
 # Example usage
 
-The library is not documented yet, but you can find an example here to get started. The example demonstrates how to connect to the device, apply a default configuration, acquire a spectrum, and safely ramp down the high voltage (HV) before disconnecting.
+The library is not documented yet, but you can find examples here to get started.
+
+## Single Device (AmptekMCA)
+
+The example demonstrates how to connect to the device, apply a default configuration, acquire a spectrum, and safely ramp down the high voltage (HV) before disconnecting.
 
 ```python
 from cfis_interfaces import AmptekMCA
@@ -92,4 +114,53 @@ amptek.set_HVSE(0, save_to_flash = True) # Ramps down, saves to flash for safety
 print("Disconnecting...")
 amptek.disconnect()
 print("Disconnected.")
+```
+
+## Multiple Devices (MultiAmptekMCA)
+
+The example demonstrates how to work with multiple Amptek devices simultaneously, applying configurations and acquiring spectra from all devices in parallel.
+
+```python
+from cfis_interfaces import MultiAmptekMCA
+import time
+
+# Initialize and auto-discover devices
+multi_amptek = MultiAmptekMCA()
+
+print(f"Found {multi_amptek.count} devices")
+
+# Connect to all devices
+connection_results = multi_amptek.connect()
+print(f"Connection results: {connection_results}")
+
+# Get device models
+models = multi_amptek.get_model()
+print(f"Device models: {models}")
+
+# --- Apply default configuration to specific device type ---
+# Only devices of type "PX5" will receive this configuration
+print("Applying default configuration to PX5 devices...")
+config_results = multi_amptek.apply_default_configuration("PX5", "CdTe Default PX5")
+print(f"Configuration results: {config_results}")
+
+# --- Configure all devices ---
+print("Setting channels to 2048 on all devices...")
+channel_results = multi_amptek.send_configuration(config_dict={"MCAC": 2048})
+print(f"Channel configuration results: {channel_results}")
+
+# --- Parallel spectrum acquisition ---
+print("Acquiring spectra from all devices in parallel...")
+spectra = multi_amptek.acquire_spectrum(preset_real_time=10)
+print(f"Spectrum acquisition results: {spectra}")
+
+# --- Safely ramp down HV on all devices ---
+print("Setting HV to 0V on all devices...")
+# Note: This would be done through individual device access or a broadcast method
+for i in range(multi_amptek.count):
+    device = multi_amptek.get_device(i)
+    device.set_HVSE(0, save_to_flash=True)
+
+print("Disconnecting from all devices...")
+multi_amptek.disconnect()
+print("All devices disconnected.")
 ```
