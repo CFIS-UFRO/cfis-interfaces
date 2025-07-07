@@ -1515,7 +1515,7 @@ class AmptekMCA():
         triggers a save.
 
         Args:
-            target_voltage: The desired final voltage (float or int) or "OFF" (string).
+            target_voltage: The desired final voltage (float, int, or parseable string) or "OFF" (string).
             step: The approximate voltage step size for ramping (default: 50.0 V).
                   Must be positive.
             delay_sec: The delay in seconds between sending each voltage step command
@@ -1531,10 +1531,19 @@ class AmptekMCA():
         """
         self.logger.info(f"{self.log_prefix} Setting HVSE to '{target_voltage}' with ramp (step={step}V, delay={delay_sec}s)...")
 
-        if not isinstance(target_voltage, (float, int, str)):
-             raise ValueError("target_voltage must be a number or the string 'OFF'")
-        if isinstance(target_voltage, str) and target_voltage.upper() != 'OFF':
-             raise ValueError("If target_voltage is a string, it must be 'OFF'")
+        # Handle string values that might be parseable to numbers
+        if isinstance(target_voltage, str):
+            if target_voltage.upper() == 'OFF':
+                # Valid string value
+                pass
+            else:
+                # Try to parse as number
+                try:
+                    target_voltage = float(target_voltage)
+                except ValueError:
+                    raise ValueError("If target_voltage is a string, it must be 'OFF' or a parseable number")
+        elif not isinstance(target_voltage, (float, int)):
+            raise ValueError("target_voltage must be a number or the string 'OFF'")
         if step <= 0:
              raise ValueError("Step must be positive.")
 
