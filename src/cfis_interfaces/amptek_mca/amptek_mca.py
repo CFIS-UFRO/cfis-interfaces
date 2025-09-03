@@ -1706,10 +1706,19 @@ class AmptekMCA():
                             self.logger.warning(f"{self.log_prefix} Skipping malformed part '{part}' (no '=') in file {config_file_path.name}, line {line_num}")
 
             # Fix RTDS (0 was an invalid value, according to the programmer's guide the correct minimum value is 2)
-            if parsed_config and 'RTDS' in parsed_config and parsed_config['RTDS'] == '0':
-                device_name = device_type if device_type else 'unknown device'
-                self.logger.debug(f"{self.log_prefix} Fixing RTDS value in config file '{config_file_path.name}' for device '{device_name}' from 0 to 2.")
-                parsed_config['RTDS'] = '2'
+            if parsed_config and 'RTDS' in parsed_config:
+                rtds_val = parsed_config['RTDS']
+                is_zero = False
+                try:
+                    # Handle values like '0', '0.0', 0, 0.0, and strings with whitespace
+                    is_zero = float(str(rtds_val).strip()) == 0.0
+                except Exception:
+                    is_zero = False
+
+                if is_zero:
+                    device_name = device_type if device_type else 'unknown device'
+                    self.logger.debug(f"{self.log_prefix} Fixing RTDS value in config file '{config_file_path.name}' for device '{device_name}' from {rtds_val} to 2.")
+                    parsed_config['RTDS'] = '2'
                 
             # Remove unsupported parameters
             if parsed_config and device_type:
