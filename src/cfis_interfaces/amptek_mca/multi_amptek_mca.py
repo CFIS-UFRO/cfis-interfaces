@@ -169,7 +169,6 @@ class MultiAmptekMCA:
 
         results: Dict[int, Dict[str, Any]] = {}
         if parallel and self.device_count > 1:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
             with ThreadPoolExecutor(max_workers=self.device_count) as executor:
                 future_map = {executor.submit(_call_single, i, mca): i for i, mca in enumerate(self.mcas)}
                 for fut in as_completed(future_map):
