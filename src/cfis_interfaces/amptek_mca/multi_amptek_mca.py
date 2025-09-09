@@ -119,6 +119,67 @@ class MultiAmptekMCA:
             except Exception as e:
                 if self.logger:
                     self.logger.warning(f"{LOG_PREFIX}  Error disconnecting device: {e}")
+
+    # Generic broadcast utility
+    def broadcast(self,
+                  method_name: str,
+                  *args,
+                  device_type: Optional[str] = None,
+                  parallel: bool = True,
+                  **kwargs) -> Dict[int, Dict[str, Any]]:
+        """
+        Call an AmptekMCA method on all (or filtered) devices and collect results.
+
+        Args:
+            method_name: Name of the AmptekMCA method to call (e.g., 'read_configuration', 'send_configuration').
+            *args: Positional arguments to pass to the method.
+            device_type: If provided, only devices whose model matches this string are targeted.
+            parallel: If True, execute calls in parallel using threads. If False, run sequentially.
+            **kwargs: Keyword arguments to pass to the method.
+
+        Returns:
+            Dict mapping device index to a result dict with keys:
+              - 'ok': True on success, False on error, None if skipped by filter
+              - 'result': return value from the method (None if error/skip)
+              - 'error': error message string if an exception occurred, else None
+        """
+
+        def _call_single(idx: int, mca: AmptekMCA) -> Dict[str, Any]:
+            try:
+                # Filter by device type if requested
+                if device_type is not None and mca.get_model() != device_type:
+                    if self.logger:
+                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {idx} (type: {mca.get_model()}, target: {device_type})")
+                    return {"ok": None, "result": None, "error": None}
+
+                # Resolve and call method
+                target = getattr(mca, method_name, None)
+                if target is None or not callable(target):
+                    msg = f"Method '{method_name}' not found or not callable on AmptekMCA"
+                    if self.logger:
+                        self.logger.error(f"{LOG_PREFIX}  {msg}")
+                    return {"ok": False, "result": None, "error": msg}
+
+                value = target(*args, **kwargs)
+                return {"ok": True, "result": value, "error": None}
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"{LOG_PREFIX}  Error calling '{method_name}' on device {idx}: {e}")
+                return {"ok": False, "result": None, "error": str(e)}
+
+        results: Dict[int, Dict[str, Any]] = {}
+        if parallel and self.device_count > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            with ThreadPoolExecutor(max_workers=self.device_count) as executor:
+                future_map = {executor.submit(_call_single, i, mca): i for i, mca in enumerate(self.mcas)}
+                for fut in as_completed(future_map):
+                    i = future_map[fut]
+                    results[i] = fut.result()
+        else:
+            for i, mca in enumerate(self.mcas):
+                results[i] = _call_single(i, mca)
+
+        return results
     
     # Status methods
     def get_status(self, silent: bool = False) -> Dict[int, Dict[str, Any]]:
