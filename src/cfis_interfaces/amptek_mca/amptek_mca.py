@@ -1144,8 +1144,7 @@ class AmptekMCA():
 
         Behavior:
         - Sends REQ_AUTOSET_OFFSET and polls status until 'auto_input_offset_locked' is True.
-        - The lock flag is derived from status byte36 D7 (0=locked, 1=searching), we expose
-          True when locked.
+        - The lock flag is derived from status byte36 D7 (0=locked, 1=searching).
 
         Args:
             time_between_checks: Interval (s) between status polls. Must be > 0.
@@ -1159,7 +1158,7 @@ class AmptekMCA():
         if time_between_checks <= 0:
             raise ValueError("time_between_checks must be positive and non-zero.")
 
-        # Check device support (DP5G not supported per documentation in start_autoset_input_offset())
+        # Check device support (DP5G not supported according documentation)
         model = self.get_model()
         if model == 'DP5G':
             raise AmptekMCAError("Autoset Input Offset is not supported on DP5G.")
