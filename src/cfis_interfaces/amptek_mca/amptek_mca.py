@@ -586,7 +586,8 @@ class AmptekMCA():
             # Start with flags from byte 36 and common flags from byte 35
             flags = {
                 # Byte 36 Flags
-                'auto_input_offset_locked': not bool(byte36 & 0x80), # 0 means locked, 1 means searching
+                # Bit 7: 0=locked, 1=searching. We expose a boolean 'locked'.
+                'auto_input_offset_locked': not bool(byte36 & 0x80),
                 'mcs_finished': bool(byte36 & 0x40),
                 'is_first_packet_since_reboot': bool(byte36 & 0x20),
                 'fpga_clock_80mhz': bool(byte36 & 0x02),
@@ -617,6 +618,7 @@ class AmptekMCA():
                 flags['preamp_supply_8_5v'] = bool(byte38 & 0x20) # False means 5V
 
             # Handle byte 35, bit 6 (0x40) based on device type
+            # Bit 6: 0=not locked, 1=locked. We expose a boolean 'locked'.
             bit6_value = bool(byte35 & 0x40)
             if device_id == "MCA8000D":
                 flags['preset_livetime_reached'] = bit6_value
@@ -1078,7 +1080,7 @@ class AmptekMCA():
         NOTE: This command returns ACK OK immediately and does NOT wait for the
         autoset process to complete. The status must be polled separately
         using the get_status() method and checking the 'auto_input_offset_locked'
-        flag in the 'status_flags' dictionary (False means locked, True means searching).
+        flag in the 'status_flags' dictionary (True means locked, False means searching).
 
         Supported Devices: DP5, PX5. Not supported on DP5G. Check device
         compatibility before calling.
