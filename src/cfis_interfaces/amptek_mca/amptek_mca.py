@@ -1138,6 +1138,101 @@ class AmptekMCA():
 
         self.logger.info(f"{self.log_prefix} Autoset Fast Threshold command acknowledged (process started).")
 
+    def autoset_input_offset(self, time_between_checks: float = 0.5, timeout_sec: Optional[float] = 30.0) -> None:
+        """
+        Start Autoset Input Offset and wait until it is locked.
+
+        Behavior:
+        - Sends REQ_AUTOSET_OFFSET and polls status until 'auto_input_offset_locked' is True.
+        - The lock flag is derived from status byte36 D7 (0=locked, 1=searching), we expose
+          True when locked.
+
+        Args:
+            time_between_checks: Interval (s) between status polls. Must be > 0.
+            timeout_sec: Max time (s) to wait before raising timeout. Use None to wait indefinitely.
+
+        Raises:
+            AmptekMCAError: On communication errors, unsupported device (e.g., DP5G), or timeout.
+            AmptekMCAAckError: If device answers with an error ACK.
+            ValueError: If parameters are invalid.
+        """
+        if time_between_checks <= 0:
+            raise ValueError("time_between_checks must be positive and non-zero.")
+
+        # Check device support (DP5G not supported per documentation in start_autoset_input_offset())
+        model = self.get_model()
+        if model == 'DP5G':
+            raise AmptekMCAError("Autoset Input Offset is not supported on DP5G.")
+
+        self.logger.info(f"{self.log_prefix} Starting Autoset Input Offset and waiting until locked...")
+
+        # Issue command
+        self.start_autoset_input_offset()
+
+        # Poll loop
+        start = time.time()
+        while True:
+            # Check timeout
+            if timeout_sec is not None and (time.time() - start) > timeout_sec:
+                raise AmptekMCAError("Autoset Input Offset timed out before locking.")
+
+            # Get status and check lock flag
+            status = self.get_status(silent=True)
+            locked = bool(status.get('status_flags', {}).get('auto_input_offset_locked', False))
+            if locked:
+                self.logger.info(f"{self.log_prefix} Autoset Input Offset locked.")
+                return
+
+            # Not yet locked; wait
+            time.sleep(time_between_checks)
+
+    def autoset_fast_threshold(self, time_between_checks: float = 0.5, timeout_sec: Optional[float] = 30.0) -> None:
+        """
+        Start Autoset Fast Threshold and wait until it is locked.
+
+        Behavior:
+        - Sends REQ_AUTOSET_FAST_THRESH and polls status until 'auto_fast_thresh_locked' is True.
+        - The lock flag is derived from status byte35 D6 (0=not locked, 1=locked) for non-MCA8000D.
+          On MCA8000D this bit indicates Preset Livetime and cannot be used; waiting is not supported.
+
+        Args:
+            time_between_checks: Interval (s) between status polls. Must be > 0.
+            timeout_sec: Max time (s) to wait before raising timeout. Use None to wait indefinitely.
+
+        Raises:
+            AmptekMCAError: On communication errors, unsupported waiting (MCA8000D), or timeout.
+            AmptekMCAAckError: If device answers with an error ACK.
+            ValueError: If parameters are invalid.
+        """
+        if time_between_checks <= 0:
+            raise ValueError("time_between_checks must be positive and non-zero.")
+
+        model = self.get_model()
+        if model == 'MCA8000D':
+            raise AmptekMCAError("Autoset Fast Threshold lock flag not available on MCA8000D; cannot wait for lock.")
+
+        self.logger.info(f"{self.log_prefix} Starting Autoset Fast Threshold and waiting until locked...")
+
+        # Issue command
+        self.start_autoset_fast_threshold()
+
+        # Poll loop
+        start = time.time()
+        while True:
+            # Check timeout
+            if timeout_sec is not None and (time.time() - start) > timeout_sec:
+                raise AmptekMCAError("Autoset Fast Threshold timed out before locking.")
+
+            # Get status and check lock flag
+            status = self.get_status(silent=True)
+            locked = bool(status.get('status_flags', {}).get('auto_fast_thresh_locked', False))
+            if locked:
+                self.logger.info(f"{self.log_prefix} Autoset Fast Threshold locked.")
+                return
+
+            # Not yet locked; wait
+            time.sleep(time_between_checks)
+
     def _echo_test_bytes(self, data_to_echo: bytes) -> bytes:
         """
         Sends raw byte data to the device's echo command and returns the raw echoed bytes.
