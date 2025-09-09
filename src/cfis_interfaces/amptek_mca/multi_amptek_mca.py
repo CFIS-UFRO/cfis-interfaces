@@ -192,15 +192,8 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to status dictionary
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                results[i] = mca.get_status(silent=silent)
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to get status from device {i}: {e}")
-                results[i] = None
-        return results
+        br = self.broadcast("get_status", silent=silent, parallel=True)
+        return {i: (v["result"] if v["ok"] else None) for i, v in br.items()}
     
     def get_model(self) -> Dict[int, str]:
         """
@@ -219,15 +212,8 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to Spectrum object (None if failed)
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                results[i] = mca.get_spectrum()
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to get spectrum from device {i}: {e}")
-                results[i] = None
-        return results
+        br = self.broadcast("get_spectrum", parallel=True)
+        return {i: (v["result"] if v["ok"] else None) for i, v in br.items()}
     
     def clear_spectrum(self) -> Dict[int, bool]:
         """
@@ -236,16 +222,8 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                mca.clear_spectrum()
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to clear spectrum on device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast("clear_spectrum", parallel=True)
+        return {i: (v["ok"] is True) for i, v in br.items()}
     
     # MCA control methods
     def enable_mca(self) -> Dict[int, bool]:
@@ -255,16 +233,8 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                mca.enable_mca()
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to enable MCA on device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast("enable_mca", parallel=True)
+        return {i: (v["ok"] is True) for i, v in br.items()}
     
     def disable_mca(self) -> Dict[int, bool]:
         """
@@ -273,16 +243,8 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                mca.disable_mca()
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to disable MCA on device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast("disable_mca", parallel=True)
+        return {i: (v["ok"] is True) for i, v in br.items()}
     
     # High voltage control methods
     def set_HVSE(self, device_type: Optional[str] = None, target_voltage: Union[float, int, str] = None, 
@@ -300,30 +262,16 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status (None = skipped)
         """
-        def _set_hvse_single(device_index: int, mca: AmptekMCA):
-            try:
-                # Filter by device type if specified
-                if device_type is not None and mca.get_model() != device_type:
-                    if self.logger:
-                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {device_index} (type: {mca.get_model()}, target: {device_type})")
-                    return device_index, None  # Indicate skipped
-                    
-                mca.set_HVSE(target_voltage, step=step, delay_sec=delay_sec, save_to_flash=save_to_flash)
-                return device_index, True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to set HVSE on device {device_index}: {e}")
-                return device_index, False
-        
-        results = {}
-        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
-            futures = [executor.submit(_set_hvse_single, i, mca) for i, mca in enumerate(self.mcas)]
-            
-            for future in as_completed(futures):
-                device_index, success = future.result()
-                results[device_index] = success
-        
-        return results
+        br = self.broadcast(
+            "set_HVSE",
+            target_voltage,
+            step=step,
+            delay_sec=delay_sec,
+            save_to_flash=save_to_flash,
+            device_type=device_type,
+            parallel=True,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     # Configuration methods
     def send_configuration(self, device_type: Optional[str] = None, config_dict: Dict[str, Any] = None, save_to_flash: bool = False) -> Dict[int, bool]:
@@ -338,23 +286,14 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                # Filter by device type if specified
-                if device_type is not None and mca.get_model() != device_type:
-                    if self.logger:
-                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
-                    results[i] = None  # Indicate skipped
-                    continue
-                    
-                mca.send_configuration(config_dict, save_to_flash=save_to_flash)
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to send configuration to device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast(
+            "send_configuration",
+            config_dict,
+            save_to_flash=save_to_flash,
+            device_type=device_type,
+            parallel=False,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     def apply_default_configuration(self, device_type: str, config_name: str, 
                                   save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
@@ -370,24 +309,16 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status (None = skipped)
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                # Only apply to devices of matching type
-                if mca.get_model() != device_type:
-                    if self.logger:
-                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
-                    results[i] = None  # Indicate skipped
-                    continue
-                    
-                mca.apply_default_configuration(device_type, config_name, 
-                                              save_to_flash=save_to_flash, skip_hvse=skip_hvse)
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to apply default config to device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast(
+            "apply_default_configuration",
+            device_type,
+            config_name,
+            save_to_flash=save_to_flash,
+            skip_hvse=skip_hvse,
+            device_type=device_type,
+            parallel=False,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     def apply_configuration_from_file(self, device_type: Optional[str] = None, config_file_path: str = None,
                                     save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
@@ -403,24 +334,15 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status (None = skipped)
         """
-        results = {}
-        for i, mca in enumerate(self.mcas):
-            try:
-                # Filter by device type if specified
-                if device_type is not None and mca.get_model() != device_type:
-                    if self.logger:
-                        self.logger.debug(f"{LOG_PREFIX}  Skipping device {i} (type: {mca.get_model()}, target: {device_type})")
-                    results[i] = None  # Indicate skipped
-                    continue
-                    
-                mca.apply_configuration_from_file(config_file_path, device_type=device_type,
-                                                save_to_flash=save_to_flash, skip_hvse=skip_hvse)
-                results[i] = True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to apply config file to device {i}: {e}")
-                results[i] = False
-        return results
+        br = self.broadcast(
+            "apply_configuration_from_file",
+            config_file_path,
+            device_type=device_type,
+            save_to_flash=save_to_flash,
+            skip_hvse=skip_hvse,
+            parallel=False,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     # High-level acquisition methods
     def acquire_spectrum(self,
@@ -448,33 +370,19 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to Spectrum object (None if failed)
         """
-        def _acquire_single_spectrum(device_index: int, mca: AmptekMCA):
-            try:
-                spectrum = mca.acquire_spectrum(
-                    channels=channels,
-                    preset_acq_time=preset_acq_time,
-                    preset_real_time=preset_real_time,
-                    preset_counts=preset_counts,
-                    preset_live_time=preset_live_time,
-                    gain=gain,
-                    save_config_to_flash=save_config_to_flash,
-                    time_between_checks=time_between_checks
-                )
-                return device_index, spectrum
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Failed to acquire spectrum from device {device_index}: {e}")
-                return device_index, None
-        
-        results = {}
-        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
-            futures = [executor.submit(_acquire_single_spectrum, i, mca) for i, mca in enumerate(self.mcas)]
-            
-            for future in as_completed(futures):
-                device_index, spectrum = future.result()
-                results[device_index] = spectrum
-        
-        return results
+        br = self.broadcast(
+            "acquire_spectrum",
+            channels=channels,
+            preset_acq_time=preset_acq_time,
+            preset_real_time=preset_real_time,
+            preset_counts=preset_counts,
+            preset_live_time=preset_live_time,
+            gain=gain,
+            save_config_to_flash=save_config_to_flash,
+            time_between_checks=time_between_checks,
+            parallel=True,
+        )
+        return {i: (v["result"] if v["ok"] else None) for i, v in br.items()}
     
     def wait_until_mca_is_closed(self, time_between_checks: float = 1.0) -> Dict[int, bool]:
         """
@@ -486,24 +394,12 @@ class MultiAmptekMCA:
         Returns:
             Dictionary mapping device index to success status
         """
-        def _wait_single_mca(device_index: int, mca: AmptekMCA):
-            try:
-                mca.wait_until_mca_is_closed(time_between_checks=time_between_checks)
-                return device_index, True
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"{LOG_PREFIX}  Device {device_index} wait failed: {e}")
-                return device_index, False
-        
-        results = {}
-        with ThreadPoolExecutor(max_workers=self.device_count) as executor:
-            futures = [executor.submit(_wait_single_mca, i, mca) for i, mca in enumerate(self.mcas)]
-            
-            for future in as_completed(futures):
-                device_index, success = future.result()
-                results[device_index] = success
-        
-        return results
+        br = self.broadcast(
+            "wait_until_mca_is_closed",
+            time_between_checks=time_between_checks,
+            parallel=True,
+        )
+        return {i: (v["ok"] is True) for i, v in br.items()}
     
     def get_available_default_configurations(self) -> Dict[str, List[str]]:
         """Get available default configurations. Delegates to AmptekMCA."""
