@@ -202,7 +202,27 @@ class MultiAmptekMCA:
             Dictionary mapping device index to model string
         """
         return {i: mca.get_model() for i, mca in enumerate(self.mcas)}
-    
+
+    def read_configuration(self, commands_to_read: List[str], device_type: Optional[str] = None, parallel: bool = True) -> Dict[int, Optional[Dict[str, str]]]:
+        """
+        Read configuration parameters from all (or filtered) devices.
+
+        Args:
+            commands_to_read: List of 4-char parameter mnemonics or parametrized entries (e.g., ['MCAC','TPEA','SCAI=1','SCAL']).
+            device_type: If provided, only devices matching this model are targeted.
+            parallel: Execute in parallel when True.
+
+        Returns:
+            Dict mapping device index to a dict of {PARAM: value_str} or None if failed/skipped.
+        """
+        br = self.broadcast(
+            "read_configuration",
+            commands_to_read,
+            device_type=device_type,
+            parallel=parallel,
+        )
+        return {i: (v["result"] if v["ok"] else None) for i, v in br.items()}
+
     # Spectrum methods
     def get_spectrum(self) -> Dict[int, Optional[Spectrum]]:
         """
