@@ -419,6 +419,63 @@ class MultiAmptekMCA:
             parallel=True,
         )
         return {i: (v["ok"] is True) for i, v in br.items()}
+
+    # Autoset helpers
+    def autoset_input_offset(
+        self,
+        device_type: Optional[str] = None,
+        time_between_checks: float = 0.5,
+        timeout_sec: Optional[float] = 30.0,
+        parallel: bool = True,
+    ) -> Dict[int, Optional[bool]]:
+        """
+        Run autoset input offset on all (or filtered) devices and wait until locked.
+
+        Args:
+            device_type: If provided, only devices with this model are targeted.
+            time_between_checks: Polling interval in seconds.
+            timeout_sec: Max seconds to wait per device (None = indefinite).
+            parallel: Execute autoset in parallel when True.
+
+        Returns:
+            Dict index -> True if locked, False on error/timeout, None if skipped by filter.
+        """
+        br = self.broadcast(
+            "autoset_input_offset",
+            time_between_checks,
+            timeout_sec=timeout_sec,
+            device_type=device_type,
+            parallel=parallel,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
+
+    def autoset_fast_threshold(
+        self,
+        device_type: Optional[str] = None,
+        time_between_checks: float = 0.5,
+        timeout_sec: Optional[float] = 30.0,
+        parallel: bool = True,
+    ) -> Dict[int, Optional[bool]]:
+        """
+        Run autoset fast threshold on all (or filtered) devices and wait until locked.
+
+        Args:
+            device_type: If provided, only devices with this model are targeted.
+            time_between_checks: Polling interval in seconds.
+            timeout_sec: Max seconds to wait per device (None = indefinite).
+            parallel: Execute autoset in parallel when True.
+
+        Returns:
+            Dict index -> True if locked, False on error/timeout, None if skipped by filter.
+        """
+        br = self.broadcast(
+            "autoset_fast_threshold",
+            time_between_checks,
+            timeout_sec=timeout_sec,
+            device_type=device_type,
+            parallel=parallel,
+        )
+        return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     def get_available_default_configurations(self) -> Dict[str, List[str]]:
         """Get available default configurations. Delegates to AmptekMCA."""
