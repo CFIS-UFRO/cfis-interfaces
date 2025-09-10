@@ -1601,7 +1601,14 @@ class AmptekMCA():
         else:
             return True
 
-    def set_HVSE(self, target_voltage: Union[float, int, str], step: float = 50.0, delay_sec: float = 0.5, save_to_flash: bool = False) -> None:
+    def set_HVSE(self,
+                 target_voltage: Union[float, int, str],
+                 step: float = 50.0,
+                 delay_sec: float = 0.5,
+                 save_to_flash: bool = False,
+                 max_wait_sec: float = 15.0,
+                 validate_poll_interval_sec: float = 1.0,
+                 tolerance_v: float = 10.0) -> None:
         """
         Sets the High Voltage supply, ramping the voltage in steps if necessary.
 
@@ -1612,13 +1619,20 @@ class AmptekMCA():
 
         Args:
             target_voltage: The desired final voltage (float, int, or parseable string) or "OFF" (string).
-            step: Step size magnitude in volts (default: 50.0 V).
-                  Must be positive.
-                  The ramp direction is inferred automatically (negative if target < current).
+            step: Approximate step size magnitude in volts (default: 50.0 V).
+                  Provide a positive value; the ramp direction is inferred
+                  automatically (internally negative if target < current).
+                  In other words, this is the absolute step.
             delay_sec: The delay in seconds between sending each voltage step command
-                       (default: 0.5 s).
+                       (default: 0.5 s). Applied after each step converges.
             save_to_flash: If True, the final target voltage will be saved to flash.
                           If False, it will not be saved (default: False).
+            max_wait_sec: Maximum time to wait after each step while verifying
+                          convergence to the step target (default: 15.0 s).
+            validate_poll_interval_sec: Interval between status polls during
+                                         per-step validation (default: 1.0 s).
+            tolerance_v: Acceptable absolute voltage error for convergence check
+                         (default: 10.0 V).
 
         Raises:
             AmptekMCAError: If connection or communication fails, device doesn't support HVSE,
@@ -1649,9 +1663,15 @@ class AmptekMCA():
         if math.isclose(target_v_numeric, 0.0, abs_tol=1e-9):
             target_v_numeric = 0.0
 
-        # Step validation
+        # Step and validation parameters
         if not math.isfinite(step) or step <= 0:
             raise ValueError("Step must be positive and finite.")
+        if not math.isfinite(max_wait_sec) or max_wait_sec < 0:
+            raise ValueError("max_wait_sec must be finite and >= 0.")
+        if not math.isfinite(validate_poll_interval_sec) or validate_poll_interval_sec <= 0:
+            raise ValueError("validate_poll_interval_sec must be finite and > 0.")
+        if not math.isfinite(tolerance_v) or tolerance_v < 0:
+            raise ValueError("tolerance_v must be finite and >= 0.")
 
 
         # --- Get Current Status for Polarity and Current HV ---
@@ -1690,6 +1710,11 @@ class AmptekMCA():
         target_note = ' (OFF)' if math.isclose(target_v_numeric, 0.0) else ''
         self.logger.info(f"{self.log_prefix} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{target_note}")
 
+        # Optional early exit: already within tolerance of target
+        if math.isclose(current_v, target_v_numeric, abs_tol=tolerance_v):
+            self.logger.info(f"{self.log_prefix} HV already within tolerance ({tolerance_v:.2f}V) of target; skipping ramp.")
+            return
+
         # --- Perform Ramping ---
         # Generate integer HV steps without duplicates, always including the final target.
         ramp_steps: List[int] = []
@@ -1705,7 +1730,7 @@ class AmptekMCA():
             # Ensure final target is included as the last step
             ramp_steps.append(target_int)
 
-        # Send steps; only the last step is saved.
+        # Send steps; validate convergence after each step; only the last step is saved.
         if ramp_steps:
             self.logger.info(f"{self.log_prefix} Ramping HV via {len(ramp_steps)} step(s)...")
             for i, step_v in enumerate(ramp_steps):
@@ -1715,6 +1740,20 @@ class AmptekMCA():
                 self.logger.debug(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={hv_to_send} (Save={should_save_this_step})")
                 try:
                     self.send_configuration({'HVSE': hv_to_send}, save_to_flash=should_save_this_step)
+                    # Validate convergence to this step before proceeding
+                    step_target_numeric = 0.0 if hv_to_send == 'OFF' else float(step_v)
+                    start_t = time.time()
+                    while True:
+                        status_step = self.get_status(silent=True)
+                        measured = status_step.get('hv')
+                        if measured is not None and math.isfinite(float(measured)):
+                            if math.isclose(float(measured), step_target_numeric, abs_tol=tolerance_v):
+                                self.logger.debug(f"{self.log_prefix} Converged to {float(measured):.1f}V within ±{tolerance_v:.1f}V of target {step_target_numeric:.1f}V.")
+                                break
+                        if (time.time() - start_t) > max_wait_sec:
+                            raise AmptekMCAError(f"Timeout validating HV convergence to {step_target_numeric:.1f}V (±{tolerance_v:.1f}V) after {max_wait_sec:.1f}s.")
+                        time.sleep(validate_poll_interval_sec)
+                    # Post‑convergence delay before next step
                     time.sleep(delay_sec)
                 except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                     self.logger.error(f"{self.log_prefix} Error during HV ramp at step HVSE={step_v}: {e}")
