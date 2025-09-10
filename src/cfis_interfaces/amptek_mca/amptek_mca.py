@@ -1656,35 +1656,36 @@ class AmptekMCA():
 
         # --- Get Current Status for Polarity and Current HV ---
         try:
-            current_status = self.get_last_status() # Get status dictionary
-            # Check device support first (simplistic check, assumes HVSE support if not DP5G/MCA)
-            device_id = current_status.get('device_id', 'Unknown')
-            if device_id in ["DP5G", "MCA8000D"]:
-                 raise AmptekMCAError(f"HVSE command is not supported by device {device_id}")
+            status = self.get_status(silent=True)
+            device_id = status.get('device_id', 'Unknown')
 
-            # Check polarity compatibility
-            is_positive_capable = current_status.get('status_flags', {}).get('hv_polarity_positive')
-            if is_positive_capable is None and device_id not in ["Unknown"]:
-                 self.logger.warning(f"{self.log_prefix} Could not determine HV polarity capability for {device_id}. Proceeding with caution.")
-            elif target_v_numeric > 0 and is_positive_capable is False:
-                 raise AmptekMCAError(f"Device {device_id} is configured for negative HV polarity, cannot set positive target {target_v_numeric}V.")
-            elif target_v_numeric < 0 and is_positive_capable is True:
-                 raise AmptekMCAError(f"Device {device_id} is configured for positive HV polarity, cannot set negative target {target_v_numeric}V.")
+            # Unsupported devices
+            if device_id in ("DP5G", "MCA8000D"):
+                raise AmptekMCAError(f"HVSE command is not supported by device {device_id}")
 
-            # Get current HV value from configuration readback
-            current_config = self.read_configuration(['HVSE'])
-            current_hv_str = current_config.get('HVSE', 'OFF') # Default to OFF if not found
-            current_v = 0.0
-            if current_hv_str.upper() != 'OFF':
+            flags = status.get('status_flags') or {}
+            is_positive_capable = flags.get('hv_polarity_positive')
+            if is_positive_capable is None:
+                self.logger.warning(f"{self.log_prefix} HV polarity capability not determined for {device_id}. Proceeding with caution.")
+            else:
+                if target_v_numeric > 0 and is_positive_capable is False:
+                    raise AmptekMCAError(f"Device {device_id} is configured for negative HV polarity, cannot set +{target_v_numeric}V.")
+                if target_v_numeric < 0 and is_positive_capable is True:
+                    raise AmptekMCAError(f"Device {device_id} is configured for positive HV polarity, cannot set {target_v_numeric}V.")
+
+            # Get current HV value; fallback to config if status read fails or is non-finite
+            current_v = float(status.get('hv') or 0.0)
+            if not math.isfinite(current_v):
                 try:
-                    current_v = float(current_hv_str)
-                except ValueError:
-                    self.logger.warning(f"{self.log_prefix} Could not parse current HV value '{current_hv_str}', assuming 0V.")
+                    hvse = self.read_configuration(['HVSE']).get('HVSE', 'OFF')
+                    current_v = 0.0 if str(hvse).upper() == 'OFF' else float(hvse)
+                except Exception:
+                    self.logger.warning(f"{self.log_prefix} Could not determine current HV from config; assuming 0V.")
                     current_v = 0.0
 
         except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-             self.logger.error(f"{self.log_prefix} Failed to get initial status or current HV: {e}")
-             raise AmptekMCAError(f"Failed to get initial status/HV before ramping: {e}")
+            self.logger.error(f"{self.log_prefix} Failed to get initial status or current HV: {e}")
+            raise AmptekMCAError(f"Failed to get initial status/HV before ramping: {e}")
 
         target_note = ' (OFF)' if math.isclose(target_v_numeric, 0.0) else ''
         self.logger.info(f"{self.log_prefix} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{target_note}")
