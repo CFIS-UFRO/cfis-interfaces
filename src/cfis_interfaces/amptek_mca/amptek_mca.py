@@ -1643,19 +1643,11 @@ class AmptekMCA():
         if step <= 0:
              raise ValueError("Step must be positive.")
 
-        final_command_dict = {}
-        is_turning_off = False
-        target_v_numeric = 0.0 # Default target if turning off
-
-        if isinstance(target_voltage, str): # Must be "OFF"
-            is_turning_off = True
-            final_command_dict = {'HVSE': 'OFF'}
-            # Ramp down to 0 before turning off
+        # From this point on, OFF and 0 are equivalent targets.
+        if isinstance(target_voltage, str) and target_voltage.upper() == 'OFF':
             target_v_numeric = 0.0
         else:
             target_v_numeric = float(target_voltage)
-            # Final command sets the precise target voltage
-            final_command_dict = {'HVSE': int(round(target_v_numeric))}
 
 
         # --- Get Current Status for Polarity and Current HV ---
@@ -1690,68 +1682,42 @@ class AmptekMCA():
              self.logger.error(f"{self.log_prefix} Failed to get initial status or current HV: {e}")
              raise AmptekMCAError(f"Failed to get initial status/HV before ramping: {e}")
 
-        self.logger.info(f"{self.log_prefix} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{' (then OFF)' if is_turning_off else ''}")
+        target_note = ' (OFF)' if math.isclose(target_v_numeric, 0.0) else ''
+        self.logger.info(f"{self.log_prefix} Current HV: {current_v:.1f}V, Target HV: {target_v_numeric:.1f}V{target_note}")
 
         # --- Perform Ramping ---
-        ramp_steps = []
-        # Use math.isclose for floating point comparison
-        if not math.isclose(current_v, target_v_numeric):
-            # Determine direction and generate steps
-            actual_step = step if target_v_numeric > current_v else -step
-            next_v = current_v + actual_step
+        # Generate integer HV steps without duplicates, always including the final target.
+        ramp_steps: List[int] = []
+        current_int = int(round(current_v))
+        target_int = int(round(target_v_numeric))
+        abs_step = max(1, int(round(step)))
 
-            if actual_step > 0: # Ramping up
-                 while next_v < target_v_numeric:
-                     ramp_steps.append(int(round(next_v)))
-                     next_v += actual_step
-            else: # Ramping down
-                 while next_v > target_v_numeric:
-                     ramp_steps.append(int(round(next_v)))
-                     next_v += actual_step
-            # Ensure the final numeric target is in the list if not already hit exactly
-            if not math.isclose(ramp_steps[-1] if ramp_steps else current_v, target_v_numeric):
-                 ramp_steps.append(int(round(target_v_numeric)))
+        if current_int != target_int:
+            direction = 1 if target_int > current_int else -1
+            # Intermediate steps (exclusive of target -> target is not included here)
+            for val in range(current_int + direction * abs_step, target_int, direction * abs_step):
+                ramp_steps.append(val)
+            # Ensure final target is included as the last step
+            ramp_steps.append(target_int)
 
-        # Send intermediate steps without saving
+        # Send steps; only the last step is saved.
         if ramp_steps:
-             self.logger.info(f"{self.log_prefix} Ramping HV via {len(ramp_steps)} steps...")
-             for i, step_v in enumerate(ramp_steps):
-                 # Send all steps except the very last one without saving
-                 is_final_numeric_step = (i == len(ramp_steps) - 1)
-                 # Save only if it's the final numeric step AND we are not turning off
-                 # afterwards and if save_to_flash is True
-                 should_save_this_step = is_final_numeric_step and save_to_flash
+            self.logger.info(f"{self.log_prefix} Ramping HV via {len(ramp_steps)} step(s)...")
+            for i, step_v in enumerate(ramp_steps):
+                is_last_step = (i == len(ramp_steps) - 1)
+                hv_to_send: Union[int, str] = 'OFF' if (is_last_step and step_v == 0) else step_v
+                should_save_this_step = is_last_step and save_to_flash
+                self.logger.debug(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={hv_to_send} (Save={should_save_this_step})")
+                try:
+                    self.send_configuration({'HVSE': hv_to_send}, save_to_flash=should_save_this_step)
+                    time.sleep(delay_sec)
+                except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
+                    self.logger.error(f"{self.log_prefix} Error during HV ramp at step HVSE={step_v}: {e}")
+                    raise AmptekMCAError(f"Error during HV ramp at step HVSE={step_v}: {e}")
 
-                 step_config = {'HVSE': step_v}
-                 self.logger.debug(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={step_v} (Save={should_save_this_step})")
-                 try:
-                      # Use internal method with save_to_flash control
-                      self.send_configuration(step_config, save_to_flash=should_save_this_step)
-                      time.sleep(delay_sec)
-                 except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                      self.logger.error(f"{self.log_prefix} Error during HV ramp at step HVSE={step_v}: {e}")
-                      raise AmptekMCAError(f"Error during HV ramp at step HVSE={step_v}: {e}") # Abort ramp on error
-
-        # Send the final "OFF" command if requested, saving state
-        if is_turning_off:
-             self.logger.info(f"{self.log_prefix} Sending final HVSE=OFF command...")
-             try:
-                  self.send_configuration(final_command_dict, save_to_flash=True)
-             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                  self.logger.error(f"{self.log_prefix} Error sending final HVSE=OFF command: {e}")
-                  raise AmptekMCAError(f"Error sending final HVSE=OFF command: {e}")
-        elif not ramp_steps and not math.isclose(current_v, target_v_numeric):
-             # If no ramp steps were needed but target isn't current, send final target now
-             self.logger.info(f"{self.log_prefix} Setting final HVSE target: {final_command_dict}")
-             try:
-                  self.send_configuration(final_command_dict, save_to_flash=True)
-             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
-                  self.logger.error(f"{self.log_prefix} Error setting final HVSE target: {e}")
-                  raise AmptekMCAError(f"Error setting final HVSE target: {e}")
-        elif not is_turning_off and ramp_steps:
-             self.logger.info(f"{self.log_prefix} HV ramp completed. Final target HVSE={final_command_dict['HVSE']} set and saved.")
-        else:
-             self.logger.info(f"{self.log_prefix} HV already at target voltage.")
+        # If no steps were needed, we're already at target.
+        if not ramp_steps:
+            self.logger.info(f"{self.log_prefix} HV already at target voltage.")
 
     def _parse_configuration_file(self, config_file_path: Path, device_type: Optional[str] = None) -> OrderedDictType[str, str]:
         """
