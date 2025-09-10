@@ -1612,8 +1612,9 @@ class AmptekMCA():
 
         Args:
             target_voltage: The desired final voltage (float, int, or parseable string) or "OFF" (string).
-            step: The approximate voltage step size for ramping (default: 50.0 V).
+            step: Step size magnitude in volts (default: 50.0 V).
                   Must be positive.
+                  The ramp direction is inferred automatically (negative if target < current).
             delay_sec: The delay in seconds between sending each voltage step command
                        (default: 0.5 s).
             save_to_flash: If True, the final target voltage will be saved to flash.
@@ -1627,27 +1628,30 @@ class AmptekMCA():
         """
         self.logger.info(f"{self.log_prefix} Setting HVSE to '{target_voltage}' with ramp (step={step}V, delay={delay_sec}s)...")
 
-        # Handle string values that might be parseable to numbers
+        # Normalize and validate target voltage: strings -> uppercase; OFF => 0.0; else single float() conversion
         if isinstance(target_voltage, str):
-            if target_voltage.upper() == 'OFF':
-                # Valid string value
-                pass
+            tv_raw = target_voltage.strip().upper()
+            if tv_raw == 'OFF':
+                target_v_numeric = 0.0
             else:
-                # Try to parse as number
                 try:
-                    target_voltage = float(target_voltage)
+                    target_v_numeric = float(tv_raw)
                 except ValueError:
-                    raise ValueError("If target_voltage is a string, it must be 'OFF' or a parseable number")
-        elif not isinstance(target_voltage, (float, int)):
-            raise ValueError("target_voltage must be a number or the string 'OFF'")
-        if step <= 0:
-             raise ValueError("Step must be positive.")
-
-        # From this point on, OFF and 0 are equivalent targets.
-        if isinstance(target_voltage, str) and target_voltage.upper() == 'OFF':
-            target_v_numeric = 0.0
-        else:
+                    raise ValueError("target_voltage must be a number or 'OFF'")
+        elif isinstance(target_voltage, (int, float)):
             target_v_numeric = float(target_voltage)
+        else:
+            raise ValueError("target_voltage must be a number or 'OFF'")
+
+        # Canonicalize and validate
+        if not math.isfinite(target_v_numeric):
+            raise ValueError("target_voltage must be finite")
+        if math.isclose(target_v_numeric, 0.0, abs_tol=1e-9):
+            target_v_numeric = 0.0
+
+        # Step validation
+        if not math.isfinite(step) or step <= 0:
+            raise ValueError("Step must be positive and finite.")
 
 
         # --- Get Current Status for Polarity and Current HV ---
