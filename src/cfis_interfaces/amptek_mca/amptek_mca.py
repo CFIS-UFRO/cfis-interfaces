@@ -1737,18 +1737,20 @@ class AmptekMCA():
                 is_last_step = (i == len(ramp_steps) - 1)
                 hv_to_send: Union[int, str] = 'OFF' if (is_last_step and step_v == 0) else step_v
                 should_save_this_step = is_last_step and save_to_flash
-                self.logger.debug(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={hv_to_send} (Save={should_save_this_step})")
+                self.logger.info(f"{self.log_prefix} Sending ramp step {i+1}/{len(ramp_steps)}: HVSE={hv_to_send} (Save={should_save_this_step})")
                 try:
                     self.send_configuration({'HVSE': hv_to_send}, save_to_flash=should_save_this_step)
                     # Validate convergence to this step before proceeding
                     step_target_numeric = 0.0 if hv_to_send == 'OFF' else float(step_v)
                     start_t = time.time()
+                    self.logger.info(f"{self.log_prefix} Validating convergence to {step_target_numeric:.1f}V (±{tolerance_v:.1f}V)...")
                     while True:
                         status_step = self.get_status(silent=True)
                         measured = status_step.get('hv')
+                        self.logger.info(f"{self.log_prefix} Measured HV: {measured:.1f}V; Target: {step_target_numeric:.1f}V")
                         if measured is not None and math.isfinite(float(measured)):
                             if math.isclose(float(measured), step_target_numeric, abs_tol=tolerance_v):
-                                self.logger.debug(f"{self.log_prefix} Converged to {float(measured):.1f}V within ±{tolerance_v:.1f}V of target {step_target_numeric:.1f}V.")
+                                self.logger.info(f"{self.log_prefix} Converged to {float(measured):.1f}V within ±{tolerance_v:.1f}V of target {step_target_numeric:.1f}V after {time.time() - start_t:.1f}s.")
                                 break
                         if (time.time() - start_t) > max_wait_sec:
                             raise AmptekMCAError(f"Timeout validating HV convergence to {step_target_numeric:.1f}V (±{tolerance_v:.1f}V) after {max_wait_sec:.1f}s.")
