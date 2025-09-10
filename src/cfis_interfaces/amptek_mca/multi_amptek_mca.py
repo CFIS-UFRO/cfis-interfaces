@@ -266,17 +266,29 @@ class MultiAmptekMCA:
         return {i: (v["ok"] is True) for i, v in br.items()}
     
     # High voltage control methods
-    def set_HVSE(self, device_type: Optional[str] = None, target_voltage: Union[float, int, str] = None, 
-                 step: float = 50.0, delay_sec: float = 0.5, save_to_flash: bool = False) -> Dict[int, bool]:
+    def set_HVSE(self,
+                 device_type: Optional[str] = None,
+                 target_voltage: Union[float, int, str] = None,
+                 step: float = 50.0,
+                 delay_sec: float = 0.5,
+                 save_to_flash: bool = False,
+                 max_wait_sec: float = 15.0,
+                 validate_poll_interval_sec: float = 1.0,
+                 tolerance_v: float = 10.0) -> Dict[int, bool]:
         """
         Set high voltage supply on connected devices of specified type in parallel.
         
         Args:
             device_type: Device type to apply HVSE to. If None, applies to all devices.
-            target_voltage: The desired final voltage (float or int) or "OFF" (string)
-            step: The approximate voltage step size for ramping (default: 50.0 V)
-            delay_sec: The delay in seconds between sending each voltage step command (default: 0.5 s)
-            save_to_flash: If True, the final target voltage will be saved to flash
+            target_voltage: The desired final voltage (float/int) or "OFF" (string).
+            step: Approximate step size magnitude in volts (default: 50.0 V).
+                  Provide a positive value; ramp direction is inferred automatically
+                  (internally negative if target < current).
+            delay_sec: Delay after each step converges (default: 0.5 s).
+            save_to_flash: If True, the final target voltage will be saved to flash.
+            max_wait_sec: Max time to wait per step to validate convergence (default: 15.0 s).
+            validate_poll_interval_sec: Poll interval when validating per-step convergence (default: 1.0 s).
+            tolerance_v: Acceptable absolute voltage error for convergence (default: 10.0 V).
             
         Returns:
             Dictionary mapping device index to success status (None = skipped)
@@ -287,6 +299,9 @@ class MultiAmptekMCA:
             step=step,
             delay_sec=delay_sec,
             save_to_flash=save_to_flash,
+            max_wait_sec=max_wait_sec,
+            validate_poll_interval_sec=validate_poll_interval_sec,
+            tolerance_v=tolerance_v,
             device_type=device_type,
             parallel=True,
         )
