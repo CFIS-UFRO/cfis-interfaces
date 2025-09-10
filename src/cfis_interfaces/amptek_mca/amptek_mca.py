@@ -1842,7 +1842,7 @@ class AmptekMCA():
             
         return parsed_config
 
-    def _apply_configuration_dict(self, config_dict: OrderedDictType[str, Any], source_description: str, save_to_flash: bool = False, skip_hvse: bool = False) -> None:
+    def _apply_configuration_dict(self, config_dict: OrderedDictType[str, Any], source_description: str, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> None:
         """
         Internal helper method to apply a configuration dictionary to the device.
         
@@ -1851,6 +1851,8 @@ class AmptekMCA():
             source_description: Description of the configuration source for logging
             save_to_flash: If True, the configuration will be saved to flash
             skip_hvse: If True, the HVSE parameter will be skipped
+            hvse_tolerance_v: Acceptable absolute HV error for convergence (passed to set_HVSE)
+            hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
             
         Raises:
             AmptekMCAError: If connection or communication fails during command execution
@@ -1879,7 +1881,7 @@ class AmptekMCA():
             self.logger.info(f"{self.log_prefix} Applying HVSE setting separately: {target_hv_value}")
             try:
                 # Call the ramping method - set_HVSE handles all parsing and validation
-                self.set_HVSE(target_hv_value, save_to_flash=save_to_flash) # Uses default step/delay
+                self.set_HVSE(target_hv_value, save_to_flash=save_to_flash, tolerance_v=hvse_tolerance_v, max_wait_sec=hvse_max_wait_sec) # Uses default step/delay
             except (AmptekMCAError, AmptekMCAAckError, ValueError) as e:
                  self.logger.error(f"{self.log_prefix} Error applying HVSE setting '{target_hv_value}': {e}")
                  raise # Re-raise the exception
@@ -2064,7 +2066,7 @@ class AmptekMCA():
             self.logger.error(f"{self.log_prefix} Failed to load configuration from '{config_file_path}': {e}")
             return None
 
-    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False) -> None:
+    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> None:
         """
         Loads a configuration file and applies it to the device.
         
@@ -2079,6 +2081,8 @@ class AmptekMCA():
                           If False, it will not be saved (default: False).
             skip_hvse: If True, the HVSE parameter will be skipped and not applied
                       (default: False).
+            hvse_tolerance_v: Acceptable absolute HV error for convergence (passed to set_HVSE)
+            hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
                       
         Raises:
             AmptekMCAError: If connection or communication fails, if the configuration
@@ -2097,7 +2101,7 @@ class AmptekMCA():
             raise AmptekMCAError(f"Could not load configuration from file '{config_file_path}'.")
 
         # 2. Apply the configuration using the common method
-        self._apply_configuration_dict(config_to_apply, f"from file '{config_file_path}'", save_to_flash, skip_hvse)
+        self._apply_configuration_dict(config_to_apply, f"from file '{config_file_path}'", save_to_flash, skip_hvse, hvse_tolerance_v, hvse_max_wait_sec)
 
     def get_default_configuration(self, device_type: str, config_name: str) -> Optional[OrderedDictType[str, Any]]:
         """
@@ -2141,7 +2145,7 @@ class AmptekMCA():
         self.logger.info(f"{self.log_prefix} Default configuration '{config_name}' for '{device_type}' retrieved.")
         return specific_config
 
-    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash = False, skip_hvse = False) -> None:
+    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> None:
         """
         Applies a specific default configuration to the device.
 
@@ -2156,6 +2160,8 @@ class AmptekMCA():
                             If False, it will not be saved (default: False).
             skip_hvse: If True, the HVSE parameter will be skipped and not applied
                        (default: False).
+            hvse_tolerance_v: Acceptable absolute HV error for convergence (passed to set_HVSE)
+            hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
 
         Raises:
             AmptekMCAError: If connection or communication fails, if the default
@@ -2174,7 +2180,7 @@ class AmptekMCA():
             raise AmptekMCAError(f"Could not retrieve default configuration '{config_name}' for device '{device_type}'.")
 
         # 2. Apply the configuration using the common method
-        self._apply_configuration_dict(config_to_apply, f"'{config_name}' for '{device_type}'", save_to_flash, skip_hvse)
+        self._apply_configuration_dict(config_to_apply, f"'{config_name}' for '{device_type}'", save_to_flash, skip_hvse, hvse_tolerance_v, hvse_max_wait_sec)
 
     def wait_until_mca_is_closed(self, time_between_checks: float = 1) -> None:
         """

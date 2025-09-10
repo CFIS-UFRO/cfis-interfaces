@@ -330,7 +330,7 @@ class MultiAmptekMCA:
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     def apply_default_configuration(self, device_type: str, config_name: str, 
-                                  save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
+                                  save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> Dict[int, bool]:
         """
         Apply default configuration to connected devices of specified type.
         
@@ -339,6 +339,8 @@ class MultiAmptekMCA:
             config_name: Configuration name
             save_to_flash: Whether to save to flash memory
             skip_hvse: Whether to skip HVSE parameter
+            hvse_tolerance_v: Acceptable absolute HV error for convergence
+            hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
             
         Returns:
             Dictionary mapping device index to success status (None = skipped)
@@ -349,13 +351,15 @@ class MultiAmptekMCA:
             config_name,
             save_to_flash=save_to_flash,
             skip_hvse=skip_hvse,
+            hvse_tolerance_v=hvse_tolerance_v,
+            hvse_max_wait_sec=hvse_max_wait_sec,
             device_type=device_type,
             parallel=False,
         )
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
     def apply_configuration_from_file(self, device_type: Optional[str] = None, config_file_path: str = None,
-                                    save_to_flash: bool = False, skip_hvse: bool = False) -> Dict[int, bool]:
+                                    save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> Dict[int, bool]:
         """
         Apply configuration from file to connected devices of specified type.
         
@@ -364,6 +368,8 @@ class MultiAmptekMCA:
             config_file_path: Path to configuration file
             save_to_flash: Whether to save to flash memory
             skip_hvse: Whether to skip HVSE parameter
+            hvse_tolerance_v: Acceptable absolute HV error for convergence
+            hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
             
         Returns:
             Dictionary mapping device index to success status (None = skipped)
@@ -374,6 +380,8 @@ class MultiAmptekMCA:
             device_type=device_type,
             save_to_flash=save_to_flash,
             skip_hvse=skip_hvse,
+            hvse_tolerance_v=hvse_tolerance_v,
+            hvse_max_wait_sec=hvse_max_wait_sec,
             parallel=False,
         )
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
