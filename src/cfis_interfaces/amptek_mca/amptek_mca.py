@@ -143,7 +143,7 @@ class AmptekMCA():
     # Default USB timeout in milliseconds
     DEFAULT_TIMEOUT = 2000
     # Longer timeout for potentially slow operations like diagnostics or spectrum reads
-    LONG_TIMEOUT = 5000
+    LONG_TIMEOUT = 10000
     # Device ID mapping from status byte 39
     DEVICE_ID_MAP = {
         0: "DP5",
