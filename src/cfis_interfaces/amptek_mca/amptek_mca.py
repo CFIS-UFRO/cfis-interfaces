@@ -503,7 +503,7 @@ class AmptekMCA():
             The 64-byte status data payload.
         Raises:
             AmptekMCAError: If connection or communication fails.
-            AmptekMCAAckError: If the device returns an error ACK.
+            AmptekMCAAckError: If the device returns an error ACK and warn_on_ack_errors is False.
         """
         silent_log = self.logger.debug if silent else self.logger.info
         silent_log(f"{self.log_prefix} Requesting status...")
@@ -539,7 +539,7 @@ class AmptekMCA():
         Raises:
             AmptekMCAError: If connection or communication fails, or if the
                             received data cannot be parsed correctly.
-            AmptekMCAAckError: If the device returns an error ACK.
+            AmptekMCAAckError: If the device returns an error ACK and warn_on_ack_errors is False.
         """
         status_bytes = self._get_status_bytes(silent=silent)
         self.logger.debug(f"{self.log_prefix} Parsing status bytes...")
@@ -688,7 +688,7 @@ class AmptekMCA():
         Raises:
             AmptekMCAError: If connection or communication fails, or if an
                             unexpected response packet is received.
-            AmptekMCAAckError: If the device returns an error ACK.
+            AmptekMCAAckError: If the device returns an error ACK and warn_on_ack_errors is False.
         """
         self.logger.info(f"{self.log_prefix} Requesting spectrum bytes...")
         # Send the Request Spectrum command (PID1=2, PID2=1)
@@ -2066,7 +2066,7 @@ class AmptekMCA():
             self.logger.error(f"{self.log_prefix} Failed to load configuration from '{config_file_path}': {e}")
             return None
 
-    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> None:
+    def apply_configuration_from_file(self, config_file_path: str, device_type: Optional[str] = None, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0, warn_on_ack_errors: bool = True) -> None:
         """
         Loads a configuration file and applies it to the device.
         
@@ -2083,11 +2083,13 @@ class AmptekMCA():
                       (default: False).
             hvse_tolerance_v: Acceptable absolute HV error for convergence (passed to set_HVSE)
             hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
+            warn_on_ack_errors: If True, AmptekMCAAckError instances are logged as warnings
+                                instead of being raised (default: True).
                       
         Raises:
             AmptekMCAError: If connection or communication fails, if the configuration
                             file cannot be found/loaded, or during command execution.
-            AmptekMCAAckError: If the device returns an error ACK.
+            AmptekMCAAckError: If the device returns an error ACK and warn_on_ack_errors is False.
             ValueError: If configuration values are invalid.
             FileNotFoundError: If the configuration file doesn't exist.
         """
@@ -2101,7 +2103,20 @@ class AmptekMCA():
             raise AmptekMCAError(f"Could not load configuration from file '{config_file_path}'.")
 
         # 2. Apply the configuration using the common method
-        self._apply_configuration_dict(config_to_apply, f"from file '{config_file_path}'", save_to_flash, skip_hvse, hvse_tolerance_v, hvse_max_wait_sec)
+        try:
+            self._apply_configuration_dict(
+                config_to_apply,
+                f"from file '{config_file_path}'",
+                save_to_flash,
+                skip_hvse,
+                hvse_tolerance_v,
+                hvse_max_wait_sec,
+            )
+        except AmptekMCAAckError as ack_error:
+            if warn_on_ack_errors:
+                self.logger.warning(str(ack_error))
+            else:
+                raise
 
     def get_default_configuration(self, device_type: str, config_name: str) -> Optional[OrderedDictType[str, Any]]:
         """
@@ -2145,7 +2160,7 @@ class AmptekMCA():
         self.logger.info(f"{self.log_prefix} Default configuration '{config_name}' for '{device_type}' retrieved.")
         return specific_config
 
-    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> None:
+    def apply_default_configuration(self, device_type: str, config_name: str, save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0, warn_on_ack_errors: bool = True) -> None:
         """
         Applies a specific default configuration to the device.
 
@@ -2162,12 +2177,14 @@ class AmptekMCA():
                        (default: False).
             hvse_tolerance_v: Acceptable absolute HV error for convergence (passed to set_HVSE)
             hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
+            warn_on_ack_errors: If True, AmptekMCAAckError instances are logged as warnings
+                                instead of being raised (default: True).
 
         Raises:
             AmptekMCAError: If connection or communication fails, if the default
                             configuration cannot be found/retrieved, or during
                             command execution.
-            AmptekMCAAckError: If the device returns an error ACK.
+            AmptekMCAAckError: If the device returns an error ACK and warn_on_ack_errors is False.
             ValueError: If configuration values are invalid.
         """
         self.logger.info(f"{self.log_prefix} Applying default configuration '{config_name}' for device '{device_type}'...")
@@ -2180,7 +2197,20 @@ class AmptekMCA():
             raise AmptekMCAError(f"Could not retrieve default configuration '{config_name}' for device '{device_type}'.")
 
         # 2. Apply the configuration using the common method
-        self._apply_configuration_dict(config_to_apply, f"'{config_name}' for '{device_type}'", save_to_flash, skip_hvse, hvse_tolerance_v, hvse_max_wait_sec)
+        try:
+            self._apply_configuration_dict(
+                config_to_apply,
+                f"'{config_name}' for '{device_type}'",
+                save_to_flash,
+                skip_hvse,
+                hvse_tolerance_v,
+                hvse_max_wait_sec,
+            )
+        except AmptekMCAAckError as ack_error:
+            if warn_on_ack_errors:
+                self.logger.warning(str(ack_error))
+            else:
+                raise
 
     def wait_until_mca_is_closed(self, time_between_checks: float = 1) -> None:
         """

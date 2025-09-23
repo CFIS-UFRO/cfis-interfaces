@@ -329,8 +329,8 @@ class MultiAmptekMCA:
         )
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
     
-    def apply_default_configuration(self, device_type: str, config_name: str, 
-                                  save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> Dict[int, bool]:
+    def apply_default_configuration(self, device_type: str, config_name: str,
+                                  save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0, warn_on_ack_errors: bool = True) -> Dict[int, bool]:
         """
         Apply default configuration to connected devices of specified type.
         
@@ -341,6 +341,7 @@ class MultiAmptekMCA:
             skip_hvse: Whether to skip HVSE parameter
             hvse_tolerance_v: Acceptable absolute HV error for convergence
             hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
+            warn_on_ack_errors: If True, Amptek ACK errors are treated as warnings
             
         Returns:
             Dictionary mapping device index to success status (None = skipped)
@@ -353,13 +354,14 @@ class MultiAmptekMCA:
             skip_hvse=skip_hvse,
             hvse_tolerance_v=hvse_tolerance_v,
             hvse_max_wait_sec=hvse_max_wait_sec,
+            warn_on_ack_errors=warn_on_ack_errors,
             device_type=device_type,
             parallel=False,
         )
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
-    
+
     def apply_configuration_from_file(self, device_type: Optional[str] = None, config_file_path: str = None,
-                                    save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0) -> Dict[int, bool]:
+                                    save_to_flash: bool = False, skip_hvse: bool = False, hvse_tolerance_v: float = 10.0, hvse_max_wait_sec: float = 15.0, warn_on_ack_errors: bool = True) -> Dict[int, bool]:
         """
         Apply configuration from file to connected devices of specified type.
         
@@ -370,6 +372,7 @@ class MultiAmptekMCA:
             skip_hvse: Whether to skip HVSE parameter
             hvse_tolerance_v: Acceptable absolute HV error for convergence
             hvse_max_wait_sec: Max seconds to wait per HV ramp step for convergence
+            warn_on_ack_errors: If True, Amptek ACK errors are treated as warnings
             
         Returns:
             Dictionary mapping device index to success status (None = skipped)
@@ -382,6 +385,7 @@ class MultiAmptekMCA:
             skip_hvse=skip_hvse,
             hvse_tolerance_v=hvse_tolerance_v,
             hvse_max_wait_sec=hvse_max_wait_sec,
+            warn_on_ack_errors=warn_on_ack_errors,
             parallel=False,
         )
         return {i: (v["ok"] if v["ok"] is None else (v["ok"] is True)) for i, v in br.items()}
