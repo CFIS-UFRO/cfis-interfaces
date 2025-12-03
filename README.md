@@ -1,5 +1,9 @@
 # CFIS Interfaces
 
+> **⚠️ NOTICE: This repository is no longer maintained**
+>
+> This project has been discontinued in favor of [CFIS-Commons](https://github.com/CFIS-UFRO/CFIS-Commons).
+
 Interfaces used by the CFIS laboratory to control peripherals such as detectors or 3D printers.
 
 # Requirements
